@@ -90,17 +90,16 @@ final class ESPPipeline: @unchecked Sendable {
 
         // People: YOLO-pose, or Vision as a fallback.
         var raw: [RawDetection]
-        let input = yolo == nil ? nil : modelInput.prepare(image)
-        if let yolo, let input {
-            raw = yolo.people(in: input, orientation: orientation)
+        if let yolo {
+            raw = yolo.people(in: modelInput.prepare(image, size: ModelInput.poseSize), orientation: orientation)
         } else {
             raw = vision.detect(in: image, orientation: orientation)
         }
 
         // Plain detector on its own slower gate: animals, and people the pose model missed (half hidden).
         var animalsObserved = !wantAnimals   // animals off: let existing animal tracks age out
-        if let yolo, let input, objectHz > 0, objectGate.shouldRun(at: frame.timestamp, hz: objectHz) {
-            let things = yolo.things(in: input, orientation: orientation)
+        if let yolo, objectHz > 0, objectGate.shouldRun(at: frame.timestamp, hz: objectHz) {
+            let things = yolo.things(in: modelInput.prepare(image, size: ModelInput.objectSize), orientation: orientation)
             if wantAnimals { raw += things.animals }
             let posed = raw.filter { $0.kind.isPerson }.map(\.box)
             raw += PersonFusion.uncovered(things.people.map(\.box), by: posed).map { things.people[$0] }

@@ -1,4 +1,5 @@
-"""Exports YOLO11m-pose and YOLO11m to CoreML (640x480, the models' 4:3 input) and compiles them into
+"""Exports YOLO11m-pose (896x672: people far down the street stay big enough) and YOLO11m (640x480) to CoreML,
+both 4:3, and compiles them into
 App/Models/pose.mlmodelc and App/Models/objects.mlmodelc. Runs on the macOS CI runner (needs
 `xcrun coremlcompiler`). The app loads the models by those stable names, so changing size here is enough.
 
@@ -23,8 +24,9 @@ if OUT.exists():
 OUT.mkdir(parents=True)
 os.chdir(WORK)  # weights download next to the exports
 
-for weights, nms, stable in ((f"yolo11{SIZE}-pose", False, "pose"), (f"yolo11{SIZE}", True, "objects")):
-    exported = pathlib.Path(YOLO(f"{weights}.pt").export(format="coreml", imgsz=(480, 640), half=True, nms=nms))
+for weights, size, nms, stable in ((f"yolo11{SIZE}-pose", (672, 896), False, "pose"),
+                                   (f"yolo11{SIZE}", (480, 640), True, "objects")):
+    exported = pathlib.Path(YOLO(f"{weights}.pt").export(format="coreml", imgsz=size, half=True, nms=nms))
     print(f"exported {exported}")
     subprocess.run(["xcrun", "coremlcompiler", "compile", str(exported), str(WORK)], check=True)
     (WORK / f"{exported.stem}.mlmodelc").rename(OUT / f"{stable}.mlmodelc")

@@ -124,3 +124,4 @@ ARKit world tracking chỉ dùng cam 1× (Apple xác nhận trên forum), nên 0
   - Model được đóng vào app với tên cố định `pose.mlmodelc` / `objects.mlmodelc`. Đổi cỡ model chỉ cần sửa `SIZE` trong `tools/export-models.py`.
   - Chính xác hơn rõ (box khoảng 51.5 so với 39.5 mAP, pose khoảng 65 so với 50). Đổi lại nặng hơn khoảng 6–8 lần và IPA to thêm khoảng 70 MB.
   - Pipeline tự bỏ khung khi đang bận, nên tần số thực tế tự hạ theo tốc độ model.
+- **Model nhận người nhìn ảnh 896×672** (trước là 640×480). Người ở xa to gấp khoảng 1.4 lần trong mắt model, đổi lại tốn khoảng gấp đôi sức xử lý. Model vật thể giữ 640×480.

@@ -9,8 +9,8 @@ import Vision
 final class YOLOPerception {
     private let poseRequest: VNCoreMLRequest
     private let objectRequest: VNCoreMLRequest?
-    /// Model input in pixels (w × h), 4:3; `ModelInput` letterboxes other aspects so `.scaleFill` doesn't distort.
-    private let inputSize = ModelInput.size
+    /// Pose model input in pixels (w × h), 4:3; `ModelInput` letterboxes other aspects so `.scaleFill` doesn't distort.
+    private let inputSize = ModelInput.poseSize
 
     var hasObjectModel: Bool { objectRequest != nil }
 

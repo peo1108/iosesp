@@ -2,9 +2,9 @@ import CoreImage
 import CoreVideo
 import ESPCore
 
-/// Gets camera frames into the models' 640×480 (4:3). 4:3 frames go straight through (Vision scales them);
-/// other aspects (ARKit's 16:9 4K) are scaled down and letterboxed here, so people aren't squashed and every
-/// box can be mapped back exactly. Not thread-safe: call from one queue.
+/// Gets camera frames into a model's 4:3 input (896×672 for people, 640×480 for animals). 4:3 frames go straight
+/// through (Vision scales them); other aspects (ARKit's 16:9 4K) are scaled down and letterboxed here, so people
+/// aren't squashed and every box can be mapped back exactly. Not thread-safe: call from one queue.
 final class ModelInput {
     struct Prepared {
         let buffer: CVPixelBuffer
@@ -12,19 +12,22 @@ final class ModelInput {
         let letterbox: Letterbox
     }
 
-    static let size = Vec2(640, 480)
+    /// People (pose) model input.
+    static let poseSize = Vec2(896, 672)
+    /// Animal/backup-people model input.
+    static let objectSize = Vec2(640, 480)
 
     private let context = CIContext(options: [.cacheIntermediates: false, .workingColorSpace: NSNull()])
-    private var pool: CVPixelBufferPool?
+    private var pools: [Int: CVPixelBufferPool] = [:]
 
-    func prepare(_ image: CVPixelBuffer) -> Prepared {
+    func prepare(_ image: CVPixelBuffer, size: Vec2) -> Prepared {
         let imageSize = Vec2(Float(CVPixelBufferGetWidth(image)), Float(CVPixelBufferGetHeight(image)))
-        let fit = Letterbox(imageSize: imageSize, inputSize: Self.size)
-        guard !fit.isIdentity, let out = makeBuffer() else { return Prepared(buffer: image, letterbox: fit) }
+        let fit = Letterbox(imageSize: imageSize, inputSize: size)
+        guard !fit.isIdentity, let out = makeBuffer(size) else { return Prepared(buffer: image, letterbox: fit) }
 
-        let scale = min(Self.size.x / imageSize.x, Self.size.y / imageSize.y)
-        let offset = CGPoint(x: CGFloat(Self.size.x - imageSize.x * scale) / 2, y: CGFloat(Self.size.y - imageSize.y * scale) / 2)
-        let canvas = CGRect(x: 0, y: 0, width: CGFloat(Self.size.x), height: CGFloat(Self.size.y))
+        let scale = min(size.x / imageSize.x, size.y / imageSize.y)
+        let offset = CGPoint(x: CGFloat(size.x - imageSize.x * scale) / 2, y: CGFloat(size.y - imageSize.y * scale) / 2)
+        let canvas = CGRect(x: 0, y: 0, width: CGFloat(size.x), height: CGFloat(size.y))
         // Lanczos keeps thin, far-away people from aliasing away in a 6× reduction.
         let scaled = CIImage(cvPixelBuffer: image)
             .applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: scale, kCIInputAspectRatioKey: 1])
@@ -34,17 +37,20 @@ final class ModelInput {
         return Prepared(buffer: out, letterbox: fit)
     }
 
-    private func makeBuffer() -> CVPixelBuffer? {
-        if pool == nil {
+    private func makeBuffer(_ size: Vec2) -> CVPixelBuffer? {
+        let key = Int(size.x)
+        if pools[key] == nil {
             let attributes: [String: Any] = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: Int(Self.size.x),
-                kCVPixelBufferHeightKey as String: Int(Self.size.y),
+                kCVPixelBufferWidthKey as String: Int(size.x),
+                kCVPixelBufferHeightKey as String: Int(size.y),
                 kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
             ]
+            var pool: CVPixelBufferPool?
             CVPixelBufferPoolCreate(nil, nil, attributes as CFDictionary, &pool)
+            pools[key] = pool
         }
-        guard let pool else { return nil }
+        guard let pool = pools[key] else { return nil }
         var buffer: CVPixelBuffer?
         CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
         return buffer
