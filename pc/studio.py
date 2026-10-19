@@ -227,7 +227,8 @@ class Studio(QMainWindow):
         self.checks = {}
         for key, text in (("boxes", "Box 4 góc"), ("cards", "Thẻ chi tiết"), ("snaplines", "Tia (lite)"),
                           ("counter", "Bộ đếm"), ("list", "Danh sách trong khung"), ("log", "Nhật ký sự kiện"),
-                          ("animals", "Nhận diện con vật"), ("vehicles", "Nhận diện phương tiện")):
+                          ("animals", "Nhận diện con vật"), ("vehicles", "Nhận diện phương tiện"),
+                          ("depth", "Khoảng cách thật (model độ sâu)")):
             c = QCheckBox(text)
             self.checks[key] = c
             box.addWidget(c)
@@ -265,11 +266,14 @@ class Studio(QMainWindow):
         s = self.settings
         (self.mode_fast if s.value("fast", False, bool) else self.mode_max).setChecked(True)
         defaults = {"boxes": True, "cards": True, "snaplines": True, "counter": True, "list": False, "log": False,
-                    "animals": True, "vehicles": True}
+                    "animals": True, "vehicles": True, "depth": True}
         if int(s.value("version", 1)) < 2:   # v2 turns animals and vehicles on for everyone once
             s.setValue("animals", True)
             s.setValue("vehicles", True)
             s.setValue("version", 2)
+        if int(s.value("version", 1)) < 3:   # v3 adds the depth model, on by default
+            s.setValue("depth", True)
+            s.setValue("version", 3)
         for key, c in self.checks.items():
             c.setChecked(s.value(key, defaults[key], bool))
         self.watermark.setText(s.value("watermark", "", str))
@@ -291,7 +295,7 @@ class Studio(QMainWindow):
         c = self.checks
         return esp_video.Options(
             input=path, fast=self.mode_fast.isChecked(), animals=c["animals"].isChecked(),
-            vehicles=c["vehicles"].isChecked(),
+            vehicles=c["vehicles"].isChecked(), depth=c["depth"].isChecked(),
             imgsz=self.res.currentData(), detr_res=self.res.currentData(), fov=float(self.fov.currentData()),
             redetect=self.redetect.isChecked(), boxes=c["boxes"].isChecked(), cards=c["cards"].isChecked(),
             snaplines=c["snaplines"].isChecked(), counter=c["counter"].isChecked(), list=c["list"].isChecked(),

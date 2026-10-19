@@ -227,8 +227,10 @@ def kmh(mps: float) -> str:
     return f"{v:.1f} km/h" if v < 10 else f"{v:.0f} km/h"
 
 
-def meters(d: float) -> str:
-    return f"~{d:.1f} m" if d < 10 else f"~{d:.0f} m"
+def meters(d: float, approx: bool = True) -> str:
+    """"~" marks a distance guessed from body size; measured (depth model) ones go without."""
+    mark = "~" if approx else ""
+    return f"{mark}{d:.1f} m" if d < 10 else f"{mark}{d:.0f} m"
 
 
 def clock(s: float) -> str:

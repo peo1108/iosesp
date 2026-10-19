@@ -27,6 +27,8 @@ from ensemble import DETR_ANIMALS, DETR_PERSON, DETR_VEHICLES, Detections, detr_
 from esp_live import (ANIMAL_HEIGHT, ANIMALS, BLUE, VEHICLE_HEIGHT, VEHICLES, EVENT_TTL, EVENTS_SHOWN, GREEN, ORANGE, PERSON_HEIGHT, RIDING_SPEED,
                       Painter, card, clock, corners, estimate_distance, kmh, meters, snapline, torso_px, visible_box)
 
+from scene import CameraMotion, DepthModel, dedupe_vehicles, depth_scale, riders
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -39,6 +41,7 @@ class Track:
     frames: list = field(default_factory=list)
     boxes: list = field(default_factory=list)
     torsos: list = field(default_factory=list)
+    depths: list = field(default_factory=list)   # raw depth-model meters per observation (nan when not sampled)
     # Filled in by `finish`, indexed like `span`.
     span: np.ndarray | None = None
     box: np.ndarray | None = None
@@ -70,13 +73,17 @@ def gaussian_smooth(values: np.ndarray, sigma: float) -> np.ndarray:
     return out
 
 
-def finish(track: Track, fps: float, W: int, H: int, focal: float, max_gap: int):
-    """Fill gaps up to `max_gap` frames by interpolation, split at longer ones, smooth, compute distance and speed."""
+def finish(track: Track, fps: float, W: int, H: int, focal: float, max_gap: int, pan: np.ndarray | None = None,
+           scale: float = 1.0):
+    """Fill gaps up to `max_gap` frames by interpolation, split at longer ones, smooth, compute distance (depth model
+    × `scale` when sampled, else body size) and speed (positions with the camera's `pan` taken out)."""
     frames = np.array(track.frames)
     boxes = np.array(track.boxes, dtype=np.float64)
     torsos = np.array([t if t else np.nan for t in track.torsos], dtype=np.float64)
+    raw_depth = np.array(track.depths if len(track.depths) == len(track.frames) else [np.nan] * len(frames),
+                         dtype=np.float64) * scale
 
-    span, box, torso = [], [], []
+    span, box, torso, depth = [], [], [], []
     for i in range(len(frames)):
         if i and 1 < frames[i] - frames[i - 1] <= max_gap:
             a, b = frames[i - 1], frames[i]
@@ -85,10 +92,12 @@ def finish(track: Track, fps: float, W: int, H: int, focal: float, max_gap: int)
                 span.append(f)
                 box.append(boxes[i - 1] * (1 - t) + boxes[i] * t)
                 torso.append(np.nan)
+                depth.append(np.nan)
         span.append(frames[i])
         box.append(boxes[i])
         torso.append(torsos[i])
-    span, box, torso = np.array(span), np.array(box), np.array(torso)
+        depth.append(raw_depth[i])
+    span, box, torso, depth = np.array(span), np.array(box), np.array(torso), np.array(depth)
 
     # Smooth within each contiguous run separately (a long gap is a real exit and re-entry).
     breaks = np.where(np.diff(span) > 1)[0] + 1
@@ -97,10 +106,18 @@ def finish(track: Track, fps: float, W: int, H: int, focal: float, max_gap: int)
 
     dist = np.array([estimate_distance(tuple(b), track.height, focal, H, None if np.isnan(t) else t)
                      for b, t in zip(box, torso)])
+    measured = np.isfinite(depth)
+    track.measured = bool(measured.mean() > 0.3)
+    if measured.sum() >= 2:
+        # Depth is sampled every few frames: fill the rest by interpolation, then prefer it over the size guess.
+        idx = np.arange(len(span))
+        dist = np.interp(idx, idx[measured], depth[measured])
     log_d = np.concatenate([gaussian_smooth(part, sigma=fps * 0.25) for part in np.split(np.log(dist), breaks)])
     dist = np.exp(log_d)
 
     cx = (box[:, 0] + box[:, 2]) / 2
+    if pan is not None and len(pan):
+        cx = cx - pan[np.clip(span, 0, len(pan) - 1)]   # where it is in the scene, not on the turning screen
     floor = np.stack([(cx - W / 2) / focal * dist, dist], axis=1)
     speed = np.zeros(len(span))
     for part in np.split(np.arange(len(span)), breaks):
@@ -170,6 +187,8 @@ class Options:
     detr_res: int = 1280
     fov: float = 70
     min_seconds: float = 0.4
+    depth: bool = True          # metric distances from Depth Anything V2
+    depth_every: int = 2        # run the depth model on every Nth frame
     redetect: bool = False
     # Look
     boxes: bool = True
@@ -217,7 +236,7 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
     focal = max(W, H) / 2 / math.tan(math.radians(o.fov) / 2)   # FOV of the long side (portrait too)
 
     cache = o.input.with_name(o.input.name + f".esp-{'fast' if o.fast else 'max'}-{o.imgsz}-{o.detr_res}"
-                                                     f"{'-animals' if o.animals else ''}{'-vehicles' if o.vehicles else ''}.pkl")
+                                                     f"{'-animals' if o.animals else ''}{'-vehicles' if o.vehicles else ''}{'-depth' if o.depth else ''}-v2.pkl")
     cached = None
     if cache.exists() and not o.redetect:
         import pickle
@@ -230,9 +249,18 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
     tta_people = not o.no_tta and getattr(people_model, "task", "") != "pose"
     tracks: dict[str, Track] = {}
 
+    new_this_frame: list[tuple[Track, int]] = []
+
     def add(key, label, color, height, idx, box, torso=None):
         t = tracks.setdefault(key, Track(key, label, color, height))
-        t.frames.append(idx); t.boxes.append(tuple(box)); t.torsos.append(torso)
+        t.frames.append(idx); t.boxes.append(tuple(box)); t.torsos.append(torso); t.depths.append(float("nan"))
+        new_this_frame.append((t, len(t.frames) - 1))
+
+    motion = CameraMotion(W)
+    depth_model = None
+    if cached is None and o.depth:
+        say("Đang tải model độ sâu (Depth Anything V2)…")
+        depth_model = DepthModel()
 
     if cached is not None:
         pass   # detections loaded from the cache: no models needed
@@ -253,6 +281,7 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
         ok, frame = cap.read()
         if not ok:
             break
+        new_this_frame.clear()
         if o.fast:
             res = people_model.track(frame, persist=True, tracker=tracker, imgsz=o.imgsz, augment=tta_people,
                                      quantize=quant, device=device, classes=[0], conf=0.1, iou=0.6, verbose=False)[0]
@@ -309,6 +338,11 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
                     tid, i = int(row[4]), int(row[7])
                     c = int(vdets.cls[i])
                     add(f"v{tid}", VEHICLES[c], BLUE, VEHICLE_HEIGHT[c], idx, vdets.xyxy[i])
+        motion.update(frame, [t.boxes[j] for t, j in new_this_frame])
+        if depth_model is not None and new_this_frame and idx % max(o.depth_every, 1) == 0:
+            dmap = depth_model.infer(frame)
+            for t, j in new_this_frame:
+                t.depths[j] = DepthModel.sample(dmap, t.boxes[j], (H, W))
         idx += 1
         if idx % 10 == 0:
             tick("detect", idx, total or idx, started, frame)
@@ -320,19 +354,36 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
         import pickle
         frame_count = idx
         with open(cache, "wb") as fh:
-            pickle.dump({"frames": frame_count, "tracks": [(t.key, t.label, t.color, t.height, t.frames, t.boxes, t.torsos)
-                                                           for t in tracks.values()]}, fh)
+            pickle.dump({"frames": frame_count, "pan": motion.pan,
+                         "tracks": [(t.key, t.label, t.color, t.height, t.frames, t.boxes, t.torsos, t.depths)
+                                    for t in tracks.values()]}, fh)
+        pan = np.array(motion.pan)
     else:
         frame_count = cached["frames"]
+        pan = np.array(cached.get("pan", []))
         tracks = {}
-        for key, label, color, height, frames, boxes, torsos in cached["tracks"]:
-            tracks[key] = Track(key, label, color, height, list(frames), list(boxes), list(torsos))
+        for key, label, color, height, frames, boxes, torsos, depths in cached["tracks"]:
+            tracks[key] = Track(key, label, color, height, list(frames), list(boxes), list(torsos), list(depths))
 
     # ---- clean up the tracks with the whole video known
     min_len = max(3, int(o.min_seconds * fps))
     kept = [t for t in tracks.values() if len(t.frames) >= min_len]
+    # Calibrate the depth model's scale on standing, uncut people (their height is the ruler).
+    samples = []
     for t in kept:
-        finish(t, fps, W, H, focal, max_gap=int(fps * 0.5))
+        if not t.is_person:
+            continue
+        for box, d in zip(t.boxes, t.depths):
+            x0, y0, x1, y1 = box
+            if np.isfinite(d) and y0 > 0.02 * H and y1 < 0.98 * H and (y1 - y0) > 1.8 * (x1 - x0):
+                samples.append((estimate_distance(box, PERSON_HEIGHT, focal, H), d))
+    scale = depth_scale(samples)
+    if o.depth:
+        say(f"Hiệu chỉnh độ sâu: ×{scale:.2f} ({len(samples)} mẫu)")
+    for t in kept:
+        finish(t, fps, W, H, focal, max_gap=int(fps * 0.5), pan=pan, scale=scale)
+    kept = dedupe_vehicles(kept)
+    riding, hidden = riders(kept, frame_count, fps)
     say(f"Track: {len(tracks)} thô → {len(kept)} giữ lại (bỏ track ngắn hơn {o.min_seconds}s)")
     by_frame = defaultdict(list)   # frame → [(track, i)]
     for t in kept:
@@ -350,9 +401,25 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
         ok, frame = cap.read()
         if not ok:
             break
-        present = sorted(by_frame.get(idx, []), key=lambda ti: -ti[0].dist[ti[1]])   # far first
+        everyone = by_frame.get(idx, [])
+        on_bikes = riding.get(idx, {})
+        present = sorted([(t, i) for t, i in everyone if (t.key, idx) not in hidden],
+                         key=lambda ti: -ti[0].dist[ti[1]])   # far first
+
+        def shown_box(t, i):
+            """A bike's box grows over its riders."""
+            box = t.box[i]
+            for p in on_bikes.get(t.key, []):
+                j = int(np.searchsorted(p.span, idx))
+                pb = p.box[j]
+                box = np.array([min(box[0], pb[0]), min(box[1], pb[1]), max(box[2], pb[2]), max(box[3], pb[3])])
+            return tuple(box)
+
+        def title(t):
+            n = len(on_bikes.get(t.key, []))
+            return f"{t.label} · {n} người" if n else t.label
         for t, i in present:
-            box, d = tuple(t.box[i]), float(t.dist[i])
+            box, d = shown_box(t, i), float(t.dist[i])
             if o.snaplines:
                 snapline(frame, box, t.color, d)
             if o.boxes:
@@ -360,12 +427,13 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
         if o.cards:
             taken = []   # nearest people get the room; a card that would overlap is left out
             for t, i in reversed(present):
-                card(frame, painter, tuple(t.box[i]), t.color, t.label,
-                     [meters(float(t.dist[i])), kmh(float(t.speed[i])), clock((idx - t.span[0]) / fps)],
+                card(frame, painter, shown_box(t, i), t.color, title(t),
+                     [meters(float(t.dist[i]), approx=not getattr(t, "measured", False)), kmh(float(t.speed[i])),
+                      clock((idx - t.span[0]) / fps)],
                      float(t.dist[i]), taken)
 
         # HUD: counter (top left), in-view list (top right), event log + watermark (bottom left).
-        people = sum(1 for t, _ in present if t.is_person)
+        people = sum(1 for t, _ in everyone if t.is_person)   # riders still count as people
         animals: dict[str, int] = {}
         for t, _ in present:
             if not t.is_person:
@@ -389,7 +457,7 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
             y = (44 + 22 * r) * u
             cv2.circle(frame, (int(W - lw + 2 * u), int(y + 10 * u)), max(int(4 * u), 2), t.color, -1, cv2.LINE_AA)
             painter.text((W - lw + 14 * u, y), t.label, painter.bold)
-            dist = meters(float(t.dist[i]))
+            dist = meters(float(t.dist[i]), approx=not getattr(t, "measured", False))
             painter.text((W - 28 * u - painter.measure(dist)[0], y), dist)
 
         live = [e for e in events if 0 <= idx - e[0] < EVENT_TTL * fps][-EVENTS_SHOWN:] if o.log else []
@@ -431,6 +499,7 @@ def main():
     ap.add_argument("--no-tta", action="store_true", help="skip test-time augmentation")
     ap.add_argument("--no-animals", action="store_true", help="don't track animals")
     ap.add_argument("--no-vehicles", action="store_true", help="don't track vehicles")
+    ap.add_argument("--no-depth", action="store_true", help="guess distances from body size instead of the depth model")
     ap.add_argument("--fast", action="store_true", help="YOLO11x-pose only (≈3× faster, misses more people)")
     ap.add_argument("--detr-res", type=int, default=1280, help="RF-DETR input size")
     ap.add_argument("--fov", type=float, default=70, help="field of view along the long side of the frame, degrees "
@@ -444,7 +513,7 @@ def main():
     ap.add_argument("--no-counter", action="store_true")
     ap.add_argument("--redetect", action="store_true", help="ignore the saved detections and run pass 1 again")
     a = ap.parse_args()
-    run(Options(input=a.input, output=a.output, model=a.model, imgsz=a.imgsz, no_tta=a.no_tta, animals=not a.no_animals, vehicles=not a.no_vehicles,
+    run(Options(input=a.input, output=a.output, model=a.model, imgsz=a.imgsz, no_tta=a.no_tta, animals=not a.no_animals, vehicles=not a.no_vehicles, depth=not a.no_depth,
                 fast=a.fast, detr_res=a.detr_res, fov=a.fov, min_seconds=a.min_seconds, redetect=a.redetect,
                 cards=not a.no_cards, snaplines=not a.no_snaplines, counter=not a.no_counter, list=a.list, log=a.log,
                 watermark=a.watermark))
