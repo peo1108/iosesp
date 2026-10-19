@@ -9,15 +9,15 @@ final class AppModel {
     let store = ESPStore()
     let settings = SettingsStore()
     let thermal = ThermalMonitor()
+    let recorder = Recorder()
     let pipeline: ESPPipeline
-    var isRecording = false
 
     init() {
         pipeline = ESPPipeline(capture: capture, store: store)
     }
 
     var budget: PerceptionBudget {
-        ThermalPolicy.budget(thermal.level, isRecording: isRecording)
+        ThermalPolicy.budget(thermal.level, isRecording: recorder.isRecording)
     }
 
     /// Anything on screen that needs fresh perception results.
@@ -50,6 +50,7 @@ struct ESPApp: App {
                     switch phase {
                     case .active: model.capture.start()
                     case .background:
+                        model.recorder.stopForBackground()
                         model.capture.pause()
                         model.pipeline.reset()
                     default: break
