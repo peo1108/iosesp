@@ -120,3 +120,7 @@ ARKit world tracking chỉ dùng cam 1× (Apple xác nhận trên forum), nên 0
   - Cam 0.5×: format 4:3 lớn nhất, rộng tối đa 4096, ở 30 fps.
   - Ảnh 16:9 được thu nhỏ bằng Lanczos và thêm viền đen thành 640×480 (`ModelInput`). Toạ độ được đổi ngược lại qua `Letterbox`. Ảnh 4:3 vẫn đưa thẳng vào Vision.
   - Depth map của LiDAR (4:3) được đọc ở dải giữa, khớp với khung 16:9 (`DepthCrop`).
+- **YOLO11m thay YOLO11n** (cả pose lẫn vật thể), đầu vào vẫn 640×480.
+  - Model được đóng vào app với tên cố định `pose.mlmodelc` / `objects.mlmodelc`. Đổi cỡ model chỉ cần sửa `SIZE` trong `tools/export-models.py`.
+  - Chính xác hơn rõ (box khoảng 51.5 so với 39.5 mAP, pose khoảng 65 so với 50). Đổi lại nặng hơn khoảng 6–8 lần và IPA to thêm khoảng 70 MB.
+  - Pipeline tự bỏ khung khi đang bận, nên tần số thực tế tự hạ theo tốc độ model.

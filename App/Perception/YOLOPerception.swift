@@ -2,7 +2,7 @@ import CoreML
 import ESPCore
 import Vision
 
-/// People (YOLO11n-pose, plus YOLO11n as a backup for half-hidden people) and animals (YOLO11n) via CoreML
+/// People (YOLO11m-pose, plus YOLO11m as a backup for half-hidden people) and animals (YOLO11m) via CoreML
 /// on the Neural Engine.
 /// Not thread-safe: call from one queue. `init` fails when the pose model is missing, fails to load or has an
 /// unexpected output; the object model is optional (no animals without it).
@@ -17,7 +17,7 @@ final class YOLOPerception {
     init?() {
         let config = MLModelConfiguration()
         config.computeUnits = .all
-        guard let poseURL = Bundle.main.url(forResource: "yolo11n-pose", withExtension: "mlmodelc", subdirectory: "Models"),
+        guard let poseURL = Bundle.main.url(forResource: "pose", withExtension: "mlmodelc", subdirectory: "Models"),
               let pose = try? MLModel(contentsOf: poseURL, configuration: config),
               Self.hasPoseOutput(pose),
               let poseVision = try? VNCoreMLModel(for: pose)
@@ -25,7 +25,7 @@ final class YOLOPerception {
         poseRequest = VNCoreMLRequest(model: poseVision)
         poseRequest.imageCropAndScaleOption = .scaleFill
 
-        if let objectURL = Bundle.main.url(forResource: "yolo11n", withExtension: "mlmodelc", subdirectory: "Models"),
+        if let objectURL = Bundle.main.url(forResource: "objects", withExtension: "mlmodelc", subdirectory: "Models"),
            let objects = try? MLModel(contentsOf: objectURL, configuration: config),
            let objectVision = try? VNCoreMLModel(for: objects) {
             let request = VNCoreMLRequest(model: objectVision)
