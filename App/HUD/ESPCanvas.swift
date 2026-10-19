@@ -24,16 +24,27 @@ struct ESPCanvas: View {
                     stroke(line, color: layout.color.opacity(0.8), in: &context)
                 }
                 if options.box {
-                    stroke(boxPath(layout), color: layout.color, in: &context)
+                    let path = boxPath(layout)
+                    if options.boxStyle == .glass {
+                        // Frosted look: faint tint plus a sheen fading down from the top edge.
+                        let r = layout.rect
+                        context.fill(path, with: .color(layout.color.opacity(0.08)))
+                        context.fill(path, with: .linearGradient(Gradient(colors: [.white.opacity(0.18), .clear]),
+                                                                 startPoint: CGPoint(x: r.midX, y: r.minY),
+                                                                 endPoint: CGPoint(x: r.midX, y: r.minY + r.height * 0.35)))
+                    }
+                    // Partly hidden behind something: dashed.
+                    stroke(path, color: layout.color, dashed: layout.track.occlusion == .partial, in: &context)
                 }
                 if options.skeleton {
                     drawSkeleton(layout, in: &context)
                 }
                 if options.headDot {
+                    // A ring around the head that shrinks with distance (it follows the box width).
                     let h = layout.head
-                    let dot = Path(ellipseIn: CGRect(x: h.x - 4, y: h.y - 4, width: 8, height: 8))
-                    context.fill(dot, with: .color(layout.color))
-                    context.stroke(dot, with: .color(.black.opacity(0.35)), lineWidth: 1)
+                    let radius = min(max(layout.rect.width * 0.16, 4), 24)
+                    let ring = Path(ellipseIn: CGRect(x: h.x - radius, y: h.y - radius, width: radius * 2, height: radius * 2))
+                    stroke(ring, color: layout.color, in: &context)
                 }
             }
         }
@@ -85,8 +96,10 @@ struct ESPCanvas: View {
     }
 
     /// Dark halo under the colored line keeps it readable on bright scenes.
-    private func stroke(_ path: Path, color: Color, in context: inout GraphicsContext) {
-        context.stroke(path, with: .color(.black.opacity(0.35)), style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
-        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+    private func stroke(_ path: Path, color: Color, dashed: Bool = false, in context: inout GraphicsContext) {
+        let dash: [CGFloat] = dashed ? [6, 5] : []
+        context.stroke(path, with: .color(.black.opacity(0.35)),
+                       style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round, dash: dash))
+        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round, dash: dash))
     }
 }

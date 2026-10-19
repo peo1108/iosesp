@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// Top-leading status capsule: ESP · fps · players, plus scanning / tracking / heat notices.
+/// Top-leading counter capsule: "◉ 3 người · 🐕 1" · fps, plus scanning / tracking / heat notices.
 struct StatsView: View {
     let fps: Double
-    let players: Int
+    /// e.g. "3 người · 🐕 1".
+    let summary: String
+    let isEmpty: Bool
     let trackingNormal: Bool
     let heatWarning: Bool
     let accent: Color
@@ -11,17 +13,16 @@ struct StatsView: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "scope").foregroundStyle(accent)
-            Text("ESP").fontWeight(.bold)
-            Text("\(Int(fps.rounded()))fps").monospacedDigit().foregroundStyle(.secondary)
-            if players == 0 {
-                Label("Scanning…", systemImage: "dot.radiowaves.left.and.right")
+            if isEmpty {
+                Label("Đang quét…", systemImage: "dot.radiowaves.left.and.right")
                     .symbolEffect(.pulse)
                     .foregroundStyle(.secondary)
             } else {
-                Text("\(players) players").monospacedDigit()
+                Text(summary).monospacedDigit()
             }
+            Text("\(Int(fps.rounded())) fps").monospacedDigit().foregroundStyle(.secondary)
             if !trackingNormal {
-                Label("Low tracking", systemImage: "exclamationmark.triangle.fill")
+                Label("Tracking yếu", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(Palette.partial)
             }
             if heatWarning {

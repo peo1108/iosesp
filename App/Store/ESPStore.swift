@@ -28,6 +28,9 @@ final class ESPStore {
     /// Timestamp of the latest results (ARFrame clock), for "time in frame".
     var timestamp: TimeInterval = 0
 
+    /// Footprint trails by track id (world space).
+    @ObservationIgnored private(set) var trails: [Int: Trail] = [:]
+
     @ObservationIgnored private var labels = LabelBook()
     @ObservationIgnored private let activityTracker = ActivityTracker()
     @ObservationIgnored private var lastPublish: Date?
@@ -50,6 +53,7 @@ final class ESPStore {
         objects = []
         activities = [:]
         events = []
+        trails = [:]
         activityTracker.reset()
         chamsMask = nil
         cameras = TimedHistory(keep: 1.2)
@@ -73,5 +77,19 @@ final class ESPStore {
                                             orientation: orientation, label: { [unowned self] in label(for: $0) },
                                             at: timestamp)
         if events != activityTracker.events { events = activityTracker.events }
+
+        for track in tracks where track.state == .confirmed && track.kind.isPerson {
+            if let feet = track.worldPosition { trails[track.id, default: Trail()].add(feet, at: timestamp) }
+        }
+        trails = trails.filter { !$0.value.points(at: timestamp).isEmpty }
+    }
+
+    /// People and animals as the HUD counter text.
+    var countSummary: String {
+        var animals: [AnimalKind: Int] = [:]
+        for track in confirmed {
+            if case let .animal(kind) = track.kind { animals[kind, default: 0] += 1 }
+        }
+        return CountSummary.text(people: confirmedPeople.count, animals: animals)
     }
 }

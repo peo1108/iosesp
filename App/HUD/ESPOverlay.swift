@@ -14,14 +14,14 @@ struct ESPOverlay: View {
     private var showsAnything: Bool {
         let s = settings
         return s.box || s.skeleton || s.headDot || s.snaplines || s.label || s.activity || s.detailCard || s.distance
-            || s.offscreenArrows
-            || showsChams || s.stats || s.radar || s.fakeIsland || s.watermark
+            || s.trails || s.offscreenArrows || showsChams || s.showObjects || s.stats || s.playerList || s.eventLog
+            || s.radar || s.fakeIsland || s.watermark
     }
 
     var body: some View {
         GeometryReader { geo in
             if showsAnything {
-                TimelineView(.animation(minimumInterval: 1.0 / 60)) { timeline in
+                TimelineView(.animation(minimumInterval: 1.0 / budget.hudHz)) { timeline in
                     content(layout: currentLayout(size: geo.size), size: geo.size, time: timeline.date)
                 }
             }
@@ -36,10 +36,19 @@ struct ESPOverlay: View {
         let insets = InterfaceOrientation.safeAreaInsets
         let islandLeading = InterfaceOrientation.islandOnLeading
         let players = visible(layout?.players ?? [])
+        let shownIDs = Set(players.map(\.id))
 
         ZStack {
             if showsChams {
                 ChamsView(mask: store.chamsMask, mapper: layout?.mapper, accent: accent, time: time)
+            }
+            if settings.trails, let mapper = layout?.mapper {
+                TrailsView(trails: players.compactMap { p in
+                    store.trails[p.id].map { (color: p.color, points: $0.points(at: layout?.timestamp ?? 0)) }
+                }, mapper: mapper)
+            }
+            if settings.showObjects, let mapper = layout?.mapper {
+                ObjectBoxesView(objects: store.objects, mapper: mapper)
             }
             ESPCanvas(layouts: players,
                       options: .init(box: settings.box, boxStyle: settings.boxStyle.effective(trackingNormal: store.trackingNormal),
@@ -49,16 +58,18 @@ struct ESPOverlay: View {
                                             detailCard: settings.detailCard),
                              now: layout?.timestamp ?? 0, viewWidth: size.width)
             if settings.offscreenArrows {
+                // Markers only exist for tracks outside the view; apply the same filters as on screen.
                 OffscreenArrowsView(markers: (layout?.offscreen ?? []).filter { marker in
-                    settings.showAnimals || store.tracks.first { $0.id == marker.id }?.kind.isPerson ?? true
+                    guard let track = store.tracks.first(where: { $0.id == marker.id }) else { return false }
+                    return (settings.showAnimals || track.kind.isPerson) && marker.distance <= Float(settings.maxDistance)
                 })
             }
         }
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 10) {
                 if settings.stats {
-                    StatsView(fps: store.fps, players: store.confirmedPeople.count, trackingNormal: store.trackingNormal,
-                              heatWarning: budget.showHeatWarning, accent: accent)
+                    StatsView(fps: store.fps, summary: store.countSummary, isEmpty: store.confirmed.isEmpty,
+                              trackingNormal: store.trackingNormal, heatWarning: budget.showHeatWarning, accent: accent)
                 }
                 if settings.radar, store.trackingNormal, let mapper = layout?.mapper {
                     let tracked = store.tracks.filter { settings.showAnimals || $0.kind.isPerson }
@@ -70,6 +81,17 @@ struct ESPOverlay: View {
             .padding(.leading, insets.left + 4)
             .padding(.top, max(insets.top, 12))
         }
+        .overlay(alignment: .topTrailing) {
+            if settings.playerList {
+                PlayerListView(rows: players.sorted { $0.track.distance < $1.track.distance }.prefix(6).map { p in
+                    PlayerListView.Row(id: p.id, label: p.label,
+                                       detail: p.activity.map { "\($0.mainEmoji) \($0.mainText)" } ?? kindEmoji(p.track.kind),
+                                       distance: p.track.distance, color: p.color)
+                })
+                .padding(.trailing, insets.right + 4)
+                .padding(.top, max(insets.top, 12))
+            }
+        }
         .overlay(alignment: islandLeading ? .leading : .trailing) {
             if settings.fakeIsland {
                 FakeIslandView(text: nearestPersonText(players), accent: accent)
@@ -77,24 +99,41 @@ struct ESPOverlay: View {
             }
         }
         .overlay(alignment: .bottomLeading) {
-            if settings.watermark {
-                WatermarkView(text: settings.watermarkText)
-                    .padding(.leading, insets.left + 4)
-                    .padding(.bottom, max(insets.bottom, 12))
+            VStack(alignment: .leading, spacing: 6) {
+                if settings.eventLog {
+                    EventLogView(events: store.events, now: layout?.timestamp ?? store.timestamp)
+                }
+                if settings.watermark {
+                    WatermarkView(text: settings.watermarkText)
+                }
             }
+            .padding(.leading, insets.left + 4)
+            .padding(.bottom, max(insets.bottom, 12))
         }
     }
 
-    /// People always; animals only when enabled.
+    /// People within range, nearest first and at most `maxPeople`; animals only when enabled.
     private func visible(_ players: [PlayerLayout]) -> [PlayerLayout] {
-        players.filter { settings.showAnimals || $0.track.kind.isPerson }
+        let inRange = players.filter { $0.track.distance <= Float(settings.maxDistance) }
+        let people = inRange.filter { $0.track.kind.isPerson }
+            .sorted { $0.track.distance < $1.track.distance }
+            .prefix(Int(settings.maxPeople))
+        let animals = settings.showAnimals ? inRange.filter { !$0.track.kind.isPerson } : []
+        return Array(people) + animals
+    }
+
+    private func kindEmoji(_ kind: EntityKind) -> String {
+        if case let .animal(animal) = kind { return animal.emoji }
+        return ""
     }
 
     private func nearestPersonText(_ players: [PlayerLayout]) -> String? {
         guard let nearest = players.filter({ $0.track.kind.isPerson }).min(by: { $0.track.distance < $1.track.distance }) else {
             return nil
         }
-        return nearest.label + String(format: " · %.1f m", nearest.track.distance)
+        var text = nearest.label + String(format: " · %.1f m", nearest.track.distance)
+        if let action = nearest.activity?.frame.objectAction, action != .none { text += " · " + action.emoji }
+        return text
     }
 
     private func currentLayout(size: CGSize) -> ESPFrameLayout? {
