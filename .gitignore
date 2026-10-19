@@ -13,3 +13,4 @@ pc/*.pt
 pc/*.engine
 pc/*.mp4
 pc/*.jpg
+__pycache__/
