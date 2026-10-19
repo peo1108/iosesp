@@ -1,15 +1,19 @@
 import Foundation
 
 public struct TrackerConfig: Sendable {
-    /// Detections at or above this start tracks and match first (ByteTrack "high").
-    public var highConfidence: Float = 0.5
+    /// Detections at or above this start tracks and match first (ByteTrack "high"). Lower than ByteTrack's
+    /// 0.5 so small, far people on the street are picked up; three hits still filter one-off false positives.
+    public var highConfidence: Float = 0.4
     /// Detections between this and `highConfidence` only keep existing tracks alive.
     public var lowConfidence: Float = 0.15
     public var highIoU: Float = 0.2
     public var lowIoU: Float = 0.5
     public var worldMatchDistance: Float = 0.6
     public var confirmHits = 3
-    public var lostAfter: TimeInterval = 0.7
+    /// A new track may miss this long (a few 60 Hz frames) without starting over.
+    public var tentativeGrace: TimeInterval = 0.1
+    /// Unmatched confirmed tracks keep their (predicted) box this long, then disappear from screen.
+    public var lostAfter: TimeInterval = 0.5
     public var forgetAfter: TimeInterval = 10
     public var maxTracks = 30
 
@@ -73,7 +77,7 @@ public final class Tracker {
         for t in freeTracks where animalsObserved || entries[t].track.kind.isPerson {
             let unseen = time - entries[t].track.lastSeen
             switch entries[t].track.state {
-            case .tentative:
+            case .tentative where unseen > config.tentativeGrace:
                 removed.insert(t)
             case .confirmed where unseen > config.lostAfter:
                 entries[t].track.state = .lost
@@ -175,7 +179,7 @@ public final class Tracker {
         let track = Track(id: nextID, state: .tentative, box: d.box, kind: d.kind, confidence: d.confidence,
                           joints: [:], worldPosition: nil, velocity: .zero, distance: d.distance,
                           distanceIsEstimated: d.distanceIsEstimated, heightMeters: d.heightMeters, yaw: d.yaw,
-                          occlusion: d.occlusion, hits: 0, lastSeen: time)
+                          occlusion: d.occlusion, hits: 0, lastSeen: time, firstSeen: time)
         nextID += 1
         var entry = Entry(track: track, boxKalman: Self.boxKalman(d.box), boxTime: time, predictedBox: d.box)
         absorb(d, into: &entry, at: time, fresh: true)

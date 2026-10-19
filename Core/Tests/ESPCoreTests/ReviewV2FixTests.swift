@@ -62,27 +62,6 @@ private func personTrack(_ joints: [Joint: Vec2], at time: Double, velocity: Vec
     #expect(last?.frame.motion == .walking)
 }
 
-// MARK: Important 3 — a v1 preset loads as the v2 preset it names
-
-@Test func v1RagePresetLoadsFullVIP() {
-    let s = Settings.decodeOrDefault(#"{"preset":"rage","aimbot":true,"box":true,"boxStyle":"threeD","watermarkText":"hi","microphone":true}"#.data(using: .utf8))
-    var expected = Settings.default
-    expected.watermarkText = "hi"
-    expected.microphone = true
-    expected.apply(.vip)
-    #expect(s == expected)
-}
-
-@Test func v1LegitPresetGetsLabel() {
-    let s = Settings.decodeOrDefault(#"{"preset":"legit","box":true,"distance":true}"#.data(using: .utf8))
-    #expect(s.preset == .legit && s.label && s.box && s.distance)
-}
-
-@Test func v1CustomSettingsKeepTheirFlags() {
-    let s = Settings.decodeOrDefault(#"{"preset":"custom","box":true,"name":true}"#.data(using: .utf8))
-    #expect(s.preset == .custom && s.box && s.label && !s.skeleton)
-}
-
 // MARK: Confirmed tracks match before tentative duplicates
 
 private func det(_ x: Float, world: Vec3? = nil) -> Detection {

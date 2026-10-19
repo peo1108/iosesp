@@ -15,24 +15,23 @@ final class AppModel {
 
     init() {
         pipeline = ESPPipeline(capture: capture, store: store)
+        capture.setLens(settings.settings.lens)
     }
 
     var budget: PerceptionBudget {
-        ThermalPolicy.budget(thermal.level, isRecording: recorder.isRecording, smoothMode: settings.settings.smoothMode)
+        ThermalPolicy.budget(thermal.level, isRecording: recorder.isRecording)
     }
 
-    /// Animals, objects or activities need the animal/object model.
+    /// Animals, and the activities behind the list and the event log, need the animal/object model.
     private var needsObjects: Bool {
         let s = settings.settings
-        return s.showAnimals || s.showObjects || s.activity || s.detailCard || s.eventLog || s.playerList
+        return s.showAnimals || s.eventLog || s.playerList
     }
 
     /// Anything on screen that needs fresh perception results.
     private var needsPerception: Bool {
         let s = settings.settings
-        return s.box || s.skeleton || s.chams || s.snaplines || s.label || s.activity || s.detailCard || s.distance
-            || s.headDot || s.trails || s.offscreenArrows || s.radar || s.stats || s.playerList || s.eventLog
-            || s.fakeIsland || s.showObjects
+        return s.box || s.detailCard || s.snaplines || s.offscreenArrows || s.stats || s.playerList || s.eventLog
     }
 
     /// Pushes the thermal budget and current settings into the perception pipeline.
@@ -41,7 +40,13 @@ final class AppModel {
         // Idle at 10 Hz when nothing is shown, so a reveal is instant without heating the phone.
         pipeline.poseHz = needsPerception ? budget.poseHz : min(budget.poseHz, 10)
         pipeline.objectHz = needsPerception && needsObjects ? budget.objectHz : 0
-        pipeline.wantMask = settings.settings.chams && budget.chamsAllowed
+        pipeline.wantAnimals = settings.settings.showAnimals
+    }
+
+    /// Switches cameras; tracks from the old one mean nothing to the new one.
+    func applyLens() {
+        capture.setLens(settings.settings.lens)
+        pipeline.reset()
     }
 }
 
@@ -71,6 +76,7 @@ struct ESPApp: App {
                     if interrupted { model.pipeline.reset() }
                 }
                 .onChange(of: model.settings.settings, initial: true) { model.applyBudget() }
+                .onChange(of: model.settings.settings.lens) { model.applyLens() }
                 .onChange(of: model.budget) { model.applyBudget() }
                 .onChange(of: model.orientation.interfaceOrientation, initial: true) {
                     model.pipeline.visionOrientation = model.orientation.visionOrientation

@@ -7,7 +7,8 @@ struct PlayerListView: View {
         let id: Int
         let label: String
         let detail: String
-        let distance: Float
+        /// Already formatted ("2.3 m", "~8.1 m").
+        let distance: String
         let color: Color
     }
 
@@ -27,7 +28,7 @@ struct PlayerListView: View {
                     Text(row.label).fontWeight(.semibold)
                     Text(row.detail).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(String(format: "%.1f m", row.distance)).monospacedDigit()
+                    Text(row.distance).monospacedDigit()
                 }
                 .font(.caption)
                 .transition(.opacity)

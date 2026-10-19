@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Top-leading counter capsule: "◉ 3 người · 🐕 1" · fps, plus scanning / tracking / heat notices.
+/// Top-leading counter capsule: "◉ 3 người · 🐕 1" · fps, plus lens / scanning / tracking / heat notices.
 struct StatsView: View {
     let fps: Double
     /// e.g. "3 người · 🐕 1".
@@ -8,6 +8,8 @@ struct StatsView: View {
     let isEmpty: Bool
     let trackingNormal: Bool
     let heatWarning: Bool
+    /// Running on the 0.5× camera.
+    let ultraWide: Bool
     let accent: Color
 
     var body: some View {
@@ -21,6 +23,9 @@ struct StatsView: View {
                 Text(summary).monospacedDigit()
             }
             Text("\(Int(fps.rounded())) fps").monospacedDigit().foregroundStyle(.secondary)
+            if ultraWide {
+                Text("0.5×").foregroundStyle(accent)
+            }
             if !trackingNormal {
                 Label("Tracking yếu", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(Palette.partial)

@@ -15,7 +15,7 @@ struct RootView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            CameraView(session: model.capture.session)
+            CameraView(capture: model.capture, orientation: model.orientation.interfaceOrientation)
                 .ignoresSafeArea()
             ESPOverlay(capture: model.capture, store: store, settings: settings, budget: model.budget)
 
@@ -35,7 +35,8 @@ struct RootView: View {
             if menuOpen {
                 HStack {
                     Spacer()
-                    MenuPanel(store: model.settings, modelWarning: store.modelWarning, onClose: toggleMenu)
+                    MenuPanel(store: model.settings, modelWarning: store.modelWarning,
+                              ultraWideMissing: model.capture.ultraWideMissing, onClose: toggleMenu)
                         .containerRelativeFrame(.horizontal) { width, _ in width * 0.4 }
                 }
                 .padding(.vertical, 8)
@@ -44,7 +45,7 @@ struct RootView: View {
             }
 
             if !settings.hasSeenHint && !showSplash {
-                HintView { model.settings.settings.set(\.hasSeenHint, true) }
+                HintView { model.settings.settings.hasSeenHint = true }
             }
 
             if model.capture.authorization == .denied {
@@ -99,12 +100,6 @@ struct RootView: View {
             RecordButton(isRecording: recorder.isRecording, action: toggleRecording)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: islandLeading ? .trailing : .leading)
                 .padding(islandLeading ? .trailing : .leading, 8)
-        }
-        if settings.recordIndicator && recorder.isRecording {
-            RecordingDot()
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.top, 6)
-                .allowsHitTesting(false)
         }
     }
 

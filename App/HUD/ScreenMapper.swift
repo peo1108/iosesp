@@ -1,4 +1,3 @@
-import ARKit
 import ESPCore
 import UIKit
 
@@ -10,26 +9,18 @@ import UIKit
 struct ScreenMapper {
     let viewSize: CGSize
     let orientation: UIInterfaceOrientation
-    let camera: ARCamera
     let cameraToWorld: Mat4
     private let intrinsics: CameraIntrinsics
     private let mapping: ViewMapping
 
-    init(frame: ARFrame, viewSize: CGSize, orientation: UIInterfaceOrientation) {
+    init(pose: CameraPose, viewSize: CGSize, orientation: UIInterfaceOrientation) {
         self.viewSize = viewSize
         self.orientation = orientation
-        camera = frame.camera
-        cameraToWorld = Mat4(frame.camera.transform)
-        intrinsics = CameraIntrinsics(frame.camera)
+        cameraToWorld = pose.cameraToWorld
+        intrinsics = pose.intrinsics
         mapping = ViewMapping(imageSize: intrinsics.imageSize,
                               viewSize: Vec2(Float(viewSize.width), Float(viewSize.height)),
                               upsideDown: orientation == .landscapeLeft)
-    }
-
-    /// Maps the unit square of the captured image onto the view (a 180° turn in landscapeLeft).
-    var normalizedImageToView: CGAffineTransform {
-        let t = mapping.affine
-        return CGAffineTransform(a: CGFloat(t.a), b: 0, c: 0, d: CGFloat(t.d), tx: CGFloat(t.tx), ty: CGFloat(t.ty))
     }
 
     func point(normalized p: Vec2) -> CGPoint {
@@ -64,12 +55,12 @@ struct ScreenMapper {
     }
 
     /// The same projections through another camera (the one a detection was made with), on this view.
-    func depth(of world: Vec3, camera other: ARCamera) -> Float {
-        -SpatialMath.cameraSpace(world: world, cameraToWorld: Mat4(other.transform)).z
+    func depth(of world: Vec3, camera other: CameraPose) -> Float {
+        -SpatialMath.cameraSpace(world: world, cameraToWorld: other.cameraToWorld).z
     }
 
-    func point(world: Vec3, camera other: ARCamera) -> CGPoint? {
-        SpatialMath.project(world: world, intrinsics: CameraIntrinsics(other), cameraToWorld: Mat4(other.transform))
+    func point(world: Vec3, camera other: CameraPose) -> CGPoint? {
+        SpatialMath.project(world: world, intrinsics: other.intrinsics, cameraToWorld: other.cameraToWorld)
             .map { cg(mapping.view(fromPixel: $0)) }
     }
 
@@ -95,10 +86,5 @@ enum InterfaceOrientation {
 
     @MainActor static var safeAreaInsets: UIEdgeInsets {
         scene?.keyWindow?.safeAreaInsets ?? UIEdgeInsets(top: 0, left: 59, bottom: 21, right: 59)
-    }
-
-    /// In landscapeRight the top of the phone (and its Dynamic Island) is on the left.
-    @MainActor static var islandOnLeading: Bool {
-        current != .landscapeLeft
     }
 }

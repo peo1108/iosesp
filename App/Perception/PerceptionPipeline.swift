@@ -1,10 +1,9 @@
 import CoreVideo
 import ESPCore
 import ImageIO
-import QuartzCore
 import Vision
 
-/// Runs Vision on one camera image and returns the people in it. Not thread-safe: call from one queue.
+/// Fallback people detector (Vision) for when the YOLO models can't load. Not thread-safe: call from one queue.
 final class PerceptionPipeline {
     private let rectangles: VNDetectHumanRectanglesRequest = {
         let request = VNDetectHumanRectanglesRequest()
@@ -12,13 +11,6 @@ final class PerceptionPipeline {
         return request
     }()
     private let pose = VNDetectHumanBodyPoseRequest()
-    private let segmentation: VNGeneratePersonSegmentationRequest = {
-        let request = VNGeneratePersonSegmentationRequest()
-        request.qualityLevel = .balanced
-        request.outputPixelFormat = kCVPixelFormatType_OneComponent8
-        return request
-    }()
-    private var lastMask: CFTimeInterval = 0
 
     private static let jointNames: [(Joint, VNHumanBodyPoseObservation.JointName)] = [
         (.nose, .nose), (.leftEye, .leftEye), (.rightEye, .rightEye), (.leftEar, .leftEar), (.rightEar, .rightEar),
@@ -29,29 +21,10 @@ final class PerceptionPipeline {
     ]
 
     /// People in captured-image coordinates (top-left origin) whatever `orientation` Vision ran in.
-    /// `mask` is a person-segmentation buffer in Vision's orientation, produced at most every 0.1 s and only
-    /// when `wantMask` is set; nil otherwise. With `wantPeople` false (YOLO handles people) only the mask runs.
-    func detect(in pixelBuffer: CVPixelBuffer, orientation: VisionOrientation, wantPeople: Bool = true,
-                wantMask: Bool) -> (people: [RawDetection], mask: CVPixelBuffer?) {
-        let now = CACurrentMediaTime()
-        let maskDue = wantMask && now - lastMask >= 0.1
-        guard wantPeople || maskDue else { return ([], nil) }
-        var requests: [VNRequest] = wantPeople ? [rectangles, pose] : []
-        if maskDue {
-            requests.append(segmentation)
-            lastMask = now
-        }
-
+    func detect(in pixelBuffer: CVPixelBuffer, orientation: VisionOrientation) -> [RawDetection] {
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
                                             orientation: orientation == .down ? .down : .up, options: [:])
-        do {
-            try handler.perform(requests)
-        } catch {
-            return ([], nil)
-        }
-
-        let mask = maskDue ? segmentation.results?.first?.pixelBuffer : nil
-        guard wantPeople else { return ([], mask) }
+        guard (try? handler.perform([rectangles, pose])) != nil else { return [] }
 
         var people = (rectangles.results ?? []).map { observation in
             let r = observation.boundingBox
@@ -78,7 +51,7 @@ final class PerceptionPipeline {
             }
         }
 
-        return (people, mask)
+        return people
     }
 
     private static func joints(of observation: VNHumanBodyPoseObservation, orientation: VisionOrientation) -> [Joint: Vec2] {

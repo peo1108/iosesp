@@ -1,12 +1,13 @@
 import ARKit
 import ESPCore
 
-/// Places Vision detections in the world using the LiDAR depth map (or a height-based estimate without it).
+/// Places detections in the world using the LiDAR depth map, or a size-based estimate without it (ultra-wide
+/// camera, or beyond LiDAR range).
 struct SpatialResolver {
-    func resolve(_ raw: [RawDetection], frame: ARFrame) -> [Detection] {
-        let intrinsics = CameraIntrinsics(frame.camera)
-        let cameraToWorld = Mat4(frame.camera.transform)
-        let depth = DepthReader(frame.smoothedSceneDepth ?? frame.sceneDepth)
+    func resolve(_ raw: [RawDetection], frame: CameraFrame) -> [Detection] {
+        let intrinsics = frame.pose.intrinsics
+        let cameraToWorld = frame.pose.cameraToWorld
+        let depth = DepthReader(frame.depth)
         defer { depth?.unlock() }
         return raw.map { resolve($0, intrinsics: intrinsics, cameraToWorld: cameraToWorld, depth: depth) }
     }
@@ -20,13 +21,15 @@ struct SpatialResolver {
             .flatMap { $0.width > 0.01 && $0.height > 0.01 ? $0 : nil }
             ?? Rect(x: box.x + 0.4 * box.width, y: box.y + 0.3 * box.height, width: 0.2 * box.width, height: 0.2 * box.height)
 
+        let clippedTop = box.y < 0.02, clippedBottom = box.maxY > 0.98
         let measured = depth?.median(over: torso, grid: 5)
         let estimated = measured == nil
-        let d = measured ?? SpatialMath.estimatedDistance(boxHeightPixels: box.height * size.y, fy: k.fy)
+        let d = measured ?? SpatialMath.estimatedDistance(boxHeight: box.height * size.y, boxWidth: box.width * size.x,
+                                                          torso: torsoLength(person.joints, size: size),
+                                                          clipped: clippedTop || clippedBottom, fy: k.fy, kind: person.kind)
 
-        let clippedTop = box.y < 0.02, clippedBottom = box.maxY > 0.98
-        var height: Float = 1.70
-        if !clippedTop && !clippedBottom {
+        var height = person.kind.typicalHeight
+        if person.kind.isPerson, !estimated, !clippedTop, !clippedBottom {
             let top = SpatialMath.unproject(pixel: pixel(Vec2(box.center.x, box.y)), depth: d, intrinsics: k, cameraToWorld: cameraToWorld)
             let bottom = SpatialMath.unproject(pixel: pixel(Vec2(box.center.x, box.maxY)), depth: d, intrinsics: k, cameraToWorld: cameraToWorld)
             height = min(max(abs(top.y - bottom.y), 1.0), 2.2)
@@ -62,6 +65,14 @@ struct SpatialResolver {
         return Detection(box: box, kind: person.kind, confidence: person.confidence, joints: person.joints,
                          worldPosition: base, distance: d,
                          distanceIsEstimated: estimated, heightMeters: height, yaw: yaw, occlusion: occlusion)
+    }
+
+    /// Shoulder-midpoint to hip-midpoint in pixels, when all four joints were seen.
+    private func torsoLength(_ joints: [Joint: Vec2], size: Vec2) -> Float? {
+        guard let ls = joints[.leftShoulder], let rs = joints[.rightShoulder],
+              let lh = joints[.leftHip], let rh = joints[.rightHip] else { return nil }
+        let d = ((ls + rs) / 2 - (lh + rh) / 2) * size
+        return d.squareLength.squareRoot()
     }
 }
 

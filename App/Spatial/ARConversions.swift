@@ -15,3 +15,9 @@ extension CameraIntrinsics {
                   imageSize: Vec2(Float(camera.imageResolution.width), Float(camera.imageResolution.height)))
     }
 }
+
+extension CameraPose {
+    init(_ camera: ARCamera) {
+        self.init(intrinsics: CameraIntrinsics(camera), cameraToWorld: Mat4(camera.transform))
+    }
+}

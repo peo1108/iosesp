@@ -1,62 +1,52 @@
 import ESPCore
 import SwiftUI
 
-/// The hidden mod menu: a Liquid Glass panel from the trailing edge, laid out like the Settings app.
+/// The hidden mod menu: a compact Liquid Glass panel from the trailing edge. Camera on top, then grids of
+/// toggle tiles like Control Center.
 struct MenuPanel: View {
     @Bindable var store: SettingsStore
     var modelWarning = false
+    var ultraWideMissing = false
     var onClose: () -> Void
 
-    private var accent: Color { Palette.accent(store.settings.accent) }
+    private var settings: Settings { store.settings }
+    private var accent: Color { Palette.accent(settings.accent) }
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
 
     var body: some View {
         VStack(spacing: 0) {
             header
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    presetSection
-                    section("Người") {
-                        toggle("Box", "square.dashed", \.box)
-                        picker("Kiểu box", "cube", \.boxStyle,
-                               [(.corner, "Góc"), (.full, "Đầy đủ"), (.threeD, "3D"), (.glass, "Kính")])
-                        toggle("Nhãn (Người 01)", "tag.fill", \.label)
-                        toggle("Hành động", "figure.walk.motion", \.activity)
-                        toggle("Thẻ chi tiết", "list.bullet.rectangle.portrait", \.detailCard)
-                        toggle("Khoảng cách", "ruler", \.distance)
-                        toggle("Skeleton", "figure.walk", \.skeleton)
-                        toggle("Vòng đầu", "circle", \.headDot)
-                        toggle("Vệt chân", "shoeprints.fill", \.trails)
-                        toggle("Chams", "person.fill", \.chams)
-                        toggle("Snaplines", "line.diagonal", \.snaplines)
-                        toggle("Mũi tên ngoài màn hình", "location.north.line.fill", \.offscreenArrows)
-                    }
-                    section("Con vật & đồ vật") {
-                        toggle("Hiện con vật", "pawprint.fill", \.showAnimals)
-                        toggle("Hiện đồ vật", "iphone", \.showObjects)
+                VStack(alignment: .leading, spacing: 16) {
+                    cameraSection
+                    section("ESP") {
+                        grid {
+                            tile("Box", "viewfinder", \.box)
+                            tile("Thẻ chi tiết", "list.bullet.rectangle.portrait", \.detailCard)
+                            tile("Mũi tên", "location.north.line.fill", \.offscreenArrows)
+                            tile("Tia", "line.diagonal", \.snaplines)
+                            tile("Con vật", "pawprint.fill", \.showAnimals)
+                            boxStyleTile
+                        }
                     }
                     section("HUD") {
-                        toggle("Bộ đếm & FPS", "person.3.fill", \.stats)
-                        toggle("Danh sách trong khung", "list.number", \.playerList)
-                        toggle("Nhật ký sự kiện", "text.bubble.fill", \.eventLog)
-                        toggle("Radar", "dot.radiowaves.left.and.right", \.radar)
-                        slider("Tầm radar", "scope", \.radarRange, 5...30, "%.0f m")
-                        toggle("Dynamic Island", "capsule.fill", \.fakeIsland)
-                        toggle("Watermark", "textformat", \.watermark)
-                        watermarkField
-                    }
-                    section("Lọc & hiệu năng") {
-                        slider("Tầm xa tối đa", "arrow.up.and.down.and.arrow.left.and.right", \.maxDistance, 5...30, "%.0f m")
-                        slider("Số người tối đa", "person.2.fill", \.maxPeople, 5...20, "%.0f")
-                        toggle("Chế độ mượt (60 Hz)", "bolt.fill", \.smoothMode)
+                        grid {
+                            tile("Bộ đếm", "person.3.fill", \.stats)
+                            tile("Danh sách", "list.number", \.playerList)
+                            tile("Nhật ký", "text.bubble.fill", \.eventLog)
+                            tile("Watermark", "textformat", \.watermark)
+                        }
+                        if settings.watermark { watermarkField }
                     }
                     section("Quay video") {
-                        toggle("Nút quay trên màn hình", "record.circle", \.recordButton)
-                        toggle("Chấm đỏ khi đang quay", "smallcircle.filled.circle", \.recordIndicator)
-                        toggle("Thu mic", "mic.fill", \.microphone)
-                        toggle("Rung", "iphone.radiowaves.left.and.right", \.haptics)
+                        grid {
+                            tile("Nút quay", "record.circle", \.recordButton)
+                            tile("Thu mic", "mic.fill", \.microphone)
+                            tile("Rung", "iphone.radiowaves.left.and.right", \.haptics)
+                        }
                     }
-                    section("Màu chủ đạo") { accentRow }
-                    aboutSection
+                    accentRow
+                    footer
                 }
                 .padding(16)
             }
@@ -64,14 +54,13 @@ struct MenuPanel: View {
         }
         .tint(accent)
         .glassEffect(.regular, in: .rect(cornerRadius: 28))
-        .sensoryFeedback(.selection, trigger: feedbackKey) { _, _ in store.settings.haptics }
+        .sensoryFeedback(.selection, trigger: feedbackKey) { _, _ in settings.haptics }
     }
 
     /// Settings minus free text, so typing the watermark doesn't buzz on every key.
     private var feedbackKey: Settings {
-        var s = store.settings
+        var s = settings
         s.watermarkText = ""
-        s.radarRange = 0; s.maxDistance = 0; s.maxPeople = 0  // sliders: no buzz on every drag tick
         return s
     }
 
@@ -83,8 +72,8 @@ struct MenuPanel: View {
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(accent)
             VStack(alignment: .leading, spacing: 1) {
-                Text("ESP Menu").font(.headline)
-                Text("v2.6 · Undetected ✓").font(.caption).foregroundStyle(.secondary)
+                Text("ESP").font(.headline)
+                Text("v3.0 · Street").font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             Button(action: onClose) {
@@ -100,82 +89,100 @@ struct MenuPanel: View {
         .padding(.bottom, 4)
     }
 
-    private var presetSection: some View {
+    private var cameraSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                sectionTitle("Preset")
-                Spacer()
-                if store.settings.preset == .custom {
-                    Text("Custom").font(.caption.weight(.semibold)).foregroundStyle(accent)
-                }
-            }
-            Picker("Preset", selection: Binding(get: { store.settings.preset },
-                                                set: { store.apply($0) })) {
-                Text("LEGIT").tag(Preset.legit)
-                Text("VIP").tag(Preset.vip)
-                Text("STREAMER").tag(Preset.streamer)
-                Text("OFF").tag(Preset.off)
+            sectionTitle("Camera")
+            Picker("Camera", selection: $store.settings.lens) {
+                Text("1× Thường").tag(CameraLens.wide)
+                Text("0.5× Siêu rộng").tag(CameraLens.ultraWide)
             }
             .pickerStyle(.segmented)
+            if ultraWideMissing {
+                note("Máy này không có camera góc siêu rộng — đang dùng 1×.", symbol: "exclamationmark.triangle.fill",
+                     color: Palette.partial)
+            } else if settings.lens == .ultraWide {
+                note("Rộng gấp đôi nhưng không có LiDAR: khoảng cách là ước lượng (~), người ở xa nhỏ hơn.",
+                     symbol: "info.circle", color: .secondary)
+            }
         }
     }
 
+    private var boxStyleTile: some View {
+        let style = settings.boxStyle
+        let (title, symbol): (String, String) = switch style {
+        case .corner: ("Kiểu: Góc", "square.dashed")
+        case .full: ("Kiểu: Viền", "square")
+        case .glass: ("Kiểu: Kính", "square.fill")
+        }
+        return Button {
+            let all = BoxStyle.allCases
+            store.settings.boxStyle = all[(all.firstIndex(of: style)! + 1) % all.count]
+        } label: {
+            tileLabel(title, symbol, on: false)
+        }
+        .buttonStyle(.plain)
+        .opacity(settings.box ? 1 : 0.4)
+        .disabled(!settings.box)
+    }
+
     private var watermarkField: some View {
-        HStack(spacing: 12) {
-            rowIcon("character.cursor.ibeam")
-            TextField("Chữ watermark", text: store.binding(\.watermarkText))
+        HStack(spacing: 10) {
+            Image(systemName: "character.cursor.ibeam").foregroundStyle(accent)
+            TextField("Chữ watermark", text: $store.settings.watermarkText)
                 .textFieldStyle(.plain)
                 .submitLabel(.done)
         }
+        .font(.subheadline)
+        .padding(.horizontal, 12)
         .padding(.vertical, 10)
+        .background(Color.white.opacity(0.07), in: .rect(cornerRadius: 14, style: .continuous))
+        .padding(.top, 8)
     }
 
     private var accentRow: some View {
         HStack(spacing: 10) {
             ForEach(AccentName.allCases, id: \.self) { name in
                 Button {
-                    store.settings.set(\.accent, name)
+                    store.settings.accent = name
                 } label: {
                     Circle()
                         .fill(Palette.accent(name))
-                        .frame(width: 26, height: 26)
+                        .frame(width: 22, height: 22)
                         .overlay {
-                            if store.settings.accent == name {
-                                Circle().strokeBorder(.white, lineWidth: 2.5).padding(-4)
+                            if settings.accent == name {
+                                Circle().strokeBorder(.white, lineWidth: 2).padding(-4)
                             }
                         }
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.vertical, 12)
+        .padding(.horizontal, 4)
     }
 
-    private var aboutSection: some View {
+    private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            sectionTitle("Về app")
-            Text("v2.6 · Undetected ✓").font(.subheadline.weight(.semibold))
             if modelWarning {
-                Label("Không tải được model YOLO — đang dùng nhận diện dự phòng, kém hơn và không có con vật/đồ vật.",
-                      systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(Palette.partial)
+                note("Không tải được model YOLO — đang dùng nhận diện dự phòng, kém hơn và không có con vật.",
+                     symbol: "exclamationmark.triangle.fill", color: Palette.partial)
             }
-            Text("Chạm 2 lần bằng 3 ngón để mở/đóng menu. Giữ 3 ngón để quay video. Nếu bật Trợ năng → Thu phóng, iOS sẽ chiếm cử chỉ chạm 3 ngón.")
+            Text("Chạm 2 lần bằng 3 ngón để mở/đóng menu. Giữ 3 ngón để quay video.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 
-    // MARK: Rows
+    // MARK: Building blocks
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionTitle(title)
-            VStack(spacing: 0) { content() }
-                .padding(.horizontal, 14)
-                .background(Color.white.opacity(0.07), in: .rect(cornerRadius: 16))
+            content()
         }
+    }
+
+    private func grid<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        LazyVGrid(columns: columns, spacing: 8, content: content)
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -185,53 +192,38 @@ struct MenuPanel: View {
             .padding(.leading, 4)
     }
 
-    private func rowIcon(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(accent)
-            .frame(width: 22)
+    private func note(_ text: String, symbol: String, color: Color) -> some View {
+        Label(text, systemImage: symbol)
+            .font(.caption)
+            .foregroundStyle(color)
     }
 
-    private func toggle(_ title: String, _ symbol: String, _ keyPath: WritableKeyPath<Settings, Bool>) -> some View {
-        Toggle(isOn: store.binding(keyPath)) {
-            HStack(spacing: 12) {
-                rowIcon(symbol)
-                Text(title).font(.subheadline)
-            }
+    private func tile(_ title: String, _ symbol: String, _ keyPath: WritableKeyPath<Settings, Bool>) -> some View {
+        let on = settings[keyPath: keyPath]
+        return Button {
+            store.settings[keyPath: keyPath].toggle()
+        } label: {
+            tileLabel(title, symbol, on: on)
         }
-        .padding(.vertical, 7)
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    private func picker<V: Hashable>(_ title: String, _ symbol: String, _ keyPath: WritableKeyPath<Settings, V>,
-                                     _ options: [(V, String)]) -> some View {
-        HStack(spacing: 12) {
-            rowIcon(symbol)
-            Text(title).font(.subheadline)
-            Spacer()
-            Picker(title, selection: store.binding(keyPath)) {
-                ForEach(options, id: \.0) { option in
-                    Text(option.1).tag(option.0)
-                }
-            }
-            .pickerStyle(.menu)
+    private func tileLabel(_ title: String, _ symbol: String, on: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: symbol).font(.body.weight(.semibold))
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
-        .padding(.vertical, 4)
-    }
-
-    private func slider(_ title: String, _ symbol: String, _ keyPath: WritableKeyPath<Settings, Double>,
-                        _ range: ClosedRange<Double>, _ format: String) -> some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 12) {
-                rowIcon(symbol)
-                Text(title).font(.subheadline)
-                Spacer()
-                Text(String(format: format, store.settings[keyPath: keyPath]))
-                    .font(.subheadline)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            Slider(value: store.binding(keyPath), in: range)
-        }
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+        .padding(.horizontal, 11)
         .padding(.vertical, 8)
+        .foregroundStyle(on ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+        .background(on ? AnyShapeStyle(accent) : AnyShapeStyle(Color.white.opacity(0.07)),
+                    in: .rect(cornerRadius: 16, style: .continuous))
+        .contentShape(.rect(cornerRadius: 16))
+        .animation(.easeInOut(duration: 0.15), value: on)
     }
 }

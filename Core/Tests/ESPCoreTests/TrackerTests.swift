@@ -35,14 +35,44 @@ private func det(_ x: Float, _ y: Float = 0.3, world: Vec3? = nil, distance: Flo
     #expect(r.count == 1 && r[0].state == .confirmed && r[0].id == 1)
 }
 
-@Test func tentativeMissingAFrameIsDropped() {
+@Test func tentativeSurvivesAMissedFrame() {
+    // At 60 Hz a borderline detection flickers; one miss must not restart the track.
     let t = Tracker()
     t.update([det(0.2)], at: 0)
-    t.update([], at: 0.033)
-    t.update([det(0.2)], at: 0.066)
-    t.update([det(0.2)], at: 0.1)
-    let r = t.update([det(0.2)], at: 0.133)
+    t.update([], at: 1.0 / 60)
+    t.update([det(0.2)], at: 2.0 / 60)
+    let r = t.update([det(0.2)], at: 3.0 / 60)
+    #expect(r.count == 1 && r[0].id == 1 && r[0].state == .confirmed)
+}
+
+@Test func tentativeMissingLongerThanGraceIsDropped() {
+    let t = Tracker()
+    t.update([det(0.2)], at: 0)
+    t.update([], at: 0.15)
+    t.update([det(0.2)], at: 0.2)
+    t.update([det(0.2)], at: 0.233)
+    let r = t.update([det(0.2)], at: 0.266)
     #expect(r.count == 1 && r[0].id == 2)
+}
+
+@Test func confirmsWithinFiftyMillisecondsAt60Hz() {
+    let t = Tracker()
+    for i in 0..<2 { #expect(t.update([det(0.2)], at: Double(i) / 60).isEmpty) }
+    #expect(t.update([det(0.2)], at: 2.0 / 60).first?.state == .confirmed)
+}
+
+@Test func farPersonAtModerateScoreStartsTrack() {
+    let t = Tracker()
+    var r: [Track] = []
+    for i in 0..<3 { r = t.update([scored(0.2, 0.45)], at: Double(i) / 60) }
+    #expect(r.count == 1 && r[0].state == .confirmed)
+}
+
+@Test func firstSeenIsKeptAcrossUpdates() {
+    let t = Tracker()
+    var r: [Track] = []
+    for i in 0..<20 { r = t.update([det(0.2)], at: 5 + Double(i) / 30) }
+    #expect(r[0].firstSeen == 5)
 }
 
 @Test func keepsIdWhileMoving() {
@@ -61,8 +91,8 @@ private func det(_ x: Float, _ y: Float = 0.3, world: Vec3? = nil, distance: Flo
 @Test func losesThenForgets() {
     let t = Tracker()
     for i in 0..<3 { t.update([det(0.2)], at: Double(i) / 30) }
-    #expect(t.update([], at: 0.5).first?.state == .confirmed)
-    #expect(t.update([], at: 0.9).first?.state == .lost)
+    #expect(t.update([], at: 0.4).first?.state == .confirmed)
+    #expect(t.update([], at: 0.7).first?.state == .lost)
     #expect(t.update([], at: 11).isEmpty)
 }
 

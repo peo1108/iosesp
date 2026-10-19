@@ -1,14 +1,12 @@
 import ESPCore
 import SwiftUI
 
-/// Thin-line ESP drawing: boxes, skeletons, head dots and snaplines.
+/// Thin-line ESP drawing: boxes and the "lite" snaplines.
 struct ESPCanvas: View {
     struct Options {
         var box = true
         var boxStyle: BoxStyle = .corner
-        var skeleton = true
-        var headDot = true
-        var snaplines = true
+        var snaplines = false
     }
 
     let layouts: [PlayerLayout]
@@ -18,10 +16,7 @@ struct ESPCanvas: View {
         Canvas { context, size in
             for layout in layouts {
                 if options.snaplines {
-                    var line = Path()
-                    line.move(to: CGPoint(x: size.width / 2, y: size.height))
-                    line.addLine(to: CGPoint(x: layout.rect.midX, y: layout.rect.maxY))
-                    stroke(line, color: layout.color.opacity(0.8), in: &context)
+                    drawSnapline(to: layout, from: CGPoint(x: size.width / 2, y: size.height), in: &context)
                 }
                 if options.box {
                     let path = boxPath(layout)
@@ -36,34 +31,26 @@ struct ESPCanvas: View {
                     // Partly hidden behind something: dashed.
                     stroke(path, color: layout.color, dashed: layout.track.occlusion == .partial, in: &context)
                 }
-                if options.skeleton {
-                    drawSkeleton(layout, in: &context)
-                }
-                if options.headDot {
-                    // A ring around the head that shrinks with distance (it follows the box width).
-                    let h = layout.head
-                    let radius = min(max(layout.rect.width * 0.16, 4), 24)
-                    let ring = Path(ellipseIn: CGRect(x: h.x - radius, y: h.y - radius, width: radius * 2, height: radius * 2))
-                    stroke(ring, color: layout.color, in: &context)
-                }
             }
         }
+    }
+
+    /// A hairline that fades in from the bottom edge and ends in a small dot under the box.
+    private func drawSnapline(to layout: PlayerLayout, from origin: CGPoint, in context: inout GraphicsContext) {
+        let end = CGPoint(x: layout.rect.midX, y: layout.rect.maxY)
+        var line = Path()
+        line.move(to: origin)
+        line.addLine(to: end)
+        context.stroke(line, with: .linearGradient(Gradient(colors: [layout.color.opacity(0), layout.color.opacity(0.7)]),
+                                                   startPoint: origin, endPoint: end),
+                       style: StrokeStyle(lineWidth: 1, lineCap: .round))
+        context.fill(Path(ellipseIn: CGRect(x: end.x - 2, y: end.y - 2, width: 4, height: 4)), with: .color(layout.color.opacity(0.9)))
     }
 
     private func boxPath(_ layout: PlayerLayout) -> Path {
         let r = layout.rect
         var path = Path()
         switch options.boxStyle {
-        case .threeD:
-            if let c = layout.corners3D {
-                for i in 0..<4 {
-                    path.move(to: c[i]); path.addLine(to: c[(i + 1) % 4])
-                    path.move(to: c[i + 4]); path.addLine(to: c[(i + 1) % 4 + 4])
-                    path.move(to: c[i]); path.addLine(to: c[i + 4])
-                }
-            } else {
-                path.addRoundedRect(in: r, cornerSize: CGSize(width: 4, height: 4))
-            }
         case .full:
             path.addRoundedRect(in: r, cornerSize: CGSize(width: 4, height: 4))
         case .glass:
@@ -79,20 +66,6 @@ struct ESPCanvas: View {
             }
         }
         return path
-    }
-
-    private func drawSkeleton(_ layout: PlayerLayout, in context: inout GraphicsContext) {
-        var bones = Path()
-        for (a, b) in Joint.bones {
-            guard let p = layout.joint(a), let q = layout.joint(b) else { continue }
-            bones.move(to: p)
-            bones.addLine(to: q)
-        }
-        stroke(bones, color: .white, in: &context)
-        for joint in Joint.allCases {
-            guard let p = layout.joint(joint) else { continue }
-            context.fill(Path(ellipseIn: CGRect(x: p.x - 2.5, y: p.y - 2.5, width: 5, height: 5)), with: .color(.white))
-        }
     }
 
     /// Dark halo under the colored line keeps it readable on bright scenes.

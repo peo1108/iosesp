@@ -49,19 +49,6 @@ private let K = CameraIntrinsics(fx: 1000, fy: 1000, cx: 960, cy: 720, imageSize
     #expect(abs(SpatialMath.estimatedDistance(boxHeightPixels: 425, fy: 1000) - 4) < 1e-4)
 }
 
-@Test func boxCornersHeightAndFootprint() {
-    let c = SpatialMath.boxCorners(base: Vec3(0, 0, -3), height: 1.8, yaw: 0)
-    #expect(c.count == 8)
-    #expect(c[0...3].allSatisfy { $0.y == 0 } && c[4...7].allSatisfy { abs($0.y - 1.8) < 1e-5 })
-    #expect(abs(length(c[0] - c[2]) - (0.55 * 0.55 + 0.35 * 0.35).squareRoot()) < 1e-4)
-}
-
-@Test func boxCornersRotateWithYaw() {
-    let c = SpatialMath.boxCorners(base: Vec3(0, 0, 0), height: 1, yaw: .pi / 2)
-    // width axis (x) turns onto z after a quarter turn
-    #expect(abs(abs(c[1].z - c[0].z) - 0.55) < 1e-4 && abs(c[1].x - c[0].x) < 1e-4)
-}
-
 @Test func occlusionThreshold() {
     let near = [Float](repeating: 1.0, count: 4), far = [Float](repeating: 3.0, count: 6)
     #expect(SpatialMath.isPartiallyOccluded(sampleDepths: near + far, personDepth: 3))           // 40% > 35%

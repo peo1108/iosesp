@@ -23,22 +23,6 @@ private let view = Vec2(1000, 500)
     #expect(a.point.x == 36 && abs(abs(a.angle) - .pi) < 1e-5)
 }
 
-@Test func radarForwardIsUp() {
-    let b = Radar.blips([(id: 1, world: Vec3(0, 0, -5))], cameraToWorld: .identity, range: 10)
-    #expect(b == [RadarBlip(id: 1, position: Vec2(0, 0.5))])
-}
 
-@Test func radarRotatesWithHeading() {
-    // camera turned 90° left: a player at world −Z now appears on the right
-    let b = Radar.blips([(id: 1, world: Vec3(0, 0, -5))], cameraToWorld: .rotationY(.pi / 2), range: 10)[0]
-    #expect(abs(b.position.x - 0.5) < 1e-4 && abs(b.position.y) < 1e-4)
-}
 
-@Test func radarIsRelativeToCameraPosition() {
-    let b = Radar.blips([(id: 1, world: Vec3(2, 0, 0))], cameraToWorld: .translation(Vec3(2, 1.5, 5)), range: 10)[0]
-    #expect(abs(b.position.x) < 1e-4 && abs(b.position.y - 0.5) < 1e-4)
-}
 
-@Test func radarDropsOutOfRange() {
-    #expect(Radar.blips([(id: 1, world: Vec3(0, 0, -50))], cameraToWorld: .identity, range: 10).isEmpty)
-}

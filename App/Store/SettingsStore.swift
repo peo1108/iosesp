@@ -5,6 +5,7 @@ import SwiftUI
 /// The menu's settings, saved to UserDefaults on every change.
 @MainActor @Observable
 final class SettingsStore {
+    /// Same key since v1: `Settings` decodes old saves tolerantly.
     private static let key = "esp.settings.v1"
 
     var settings: Settings {
@@ -17,15 +18,5 @@ final class SettingsStore {
 
     init() {
         settings = Settings.decodeOrDefault(UserDefaults.standard.data(forKey: Self.key))
-    }
-
-    /// Binding for a menu control; edits mark the preset as Custom.
-    func binding<V>(_ keyPath: WritableKeyPath<Settings, V>) -> Binding<V> {
-        Binding(get: { self.settings[keyPath: keyPath] },
-                set: { self.settings.set(keyPath, $0) })
-    }
-
-    func apply(_ preset: Preset) {
-        settings.apply(preset)
     }
 }

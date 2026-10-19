@@ -63,14 +63,19 @@ public enum SpatialMath {
         fy * personHeight / max(boxHeightPixels, 1)
     }
 
-    /// 8 corners of a person-sized box standing on `base`: 0–3 bottom ring, 4–7 top ring.
-    public static func boxCorners(base: Vec3, height: Float, width: Float = 0.55, depth: Float = 0.35, yaw: Float) -> [Vec3] {
-        let hw = width / 2, hd = depth / 2
-        let c = cosf(yaw), s = sinf(yaw)
-        let ring = [Vec2(-hw, -hd), Vec2(hw, -hd), Vec2(hw, hd), Vec2(-hw, hd)].map { l in
-            base + Vec3(l.x * c + l.y * s, 0, -l.x * s + l.y * c)
+    /// Shoulder-to-hip length of an adult, meters.
+    static let torsoLength: Float = 0.5
+
+    /// Distance without depth (ultra-wide camera, or beyond LiDAR range). A person whose box is cut off by the
+    /// frame edge or squat (sitting, crouching) is measured by the torso, which keeps its length; otherwise the
+    /// box height is compared with the kind's typical height. Sizes are in pixels.
+    public static func estimatedDistance(boxHeight: Float, boxWidth: Float, torso: Float?, clipped: Bool, fy: Float,
+                                         kind: EntityKind) -> Float {
+        let squat = boxHeight < 1.8 * boxWidth
+        if kind.isPerson, let torso, torso > 8, clipped || squat {
+            return fy * torsoLength / torso
         }
-        return ring + ring.map { $0 + Vec3(0, height, 0) }
+        return estimatedDistance(boxHeightPixels: boxHeight, fy: fy, personHeight: kind.typicalHeight)
     }
 
     /// True when more than `fraction` of the valid samples sit at least `margin` in front of the person.

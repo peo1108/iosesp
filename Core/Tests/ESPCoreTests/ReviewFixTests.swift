@@ -104,11 +104,3 @@ private func det(yaw: Float, height: Float = 1.7) -> Detection {
     #expect(SpatialMath.trustedDepth(nil, near: 3.0) == 3.0)
 }
 
-// MARK: Box style when tracking is limited (Important #7)
-
-@Test func onlyThreeDBoxFallsBackWhenTrackingLimited() {
-    #expect(BoxStyle.corner.effective(trackingNormal: false) == .corner)
-    #expect(BoxStyle.full.effective(trackingNormal: false) == .full)
-    #expect(BoxStyle.threeD.effective(trackingNormal: false) == .full)
-    #expect(BoxStyle.threeD.effective(trackingNormal: true) == .threeD)
-}

@@ -4,7 +4,7 @@ import SwiftUI
 /// Recent events ("Người 01 ngồi xuống"), newest at the bottom, each fading out over its lifetime.
 struct EventLogView: View {
     let events: [ActivityEvent]
-    /// ARFrame clock now.
+    /// Camera clock now.
     let now: TimeInterval
 
     var body: some View {

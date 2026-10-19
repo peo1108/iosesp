@@ -17,18 +17,3 @@ struct RecordButton: View {
         .animation(.spring(duration: 0.3, bounce: 0.2), value: isRecording)
     }
 }
-
-/// Small red glass dot shown at the top while recording.
-struct RecordingDot: View {
-    @State private var dim = false
-
-    var body: some View {
-        Circle()
-            .fill(Palette.alert)
-            .frame(width: 10, height: 10)
-            .opacity(dim ? 0.4 : 1)
-            .padding(6)
-            .glassEffect(.regular, in: .circle)
-            .onAppear { withAnimation(.easeInOut(duration: 0.8).repeatForever()) { dim = true } }
-    }
-}

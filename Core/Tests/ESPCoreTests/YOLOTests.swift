@@ -83,15 +83,16 @@ private let person: (box: (Float, Float, Float, Float), conf: Float, kpts: [Int:
     #expect(abs(r.x - 0.6) < 1e-6 && abs(r.y - 0.4) < 1e-6 && r.width == 0.3 && r.height == 0.4)
 }
 
-@Test func thermalBudgetsV2() {
-    #expect(ThermalPolicy.budget(.nominal, isRecording: false, smoothMode: false)
-            == PerceptionBudget(poseHz: 30, objectHz: 15, chamsAllowed: true, showHeatWarning: false, hudHz: 60))
-    #expect(ThermalPolicy.budget(.nominal, isRecording: false, smoothMode: true).poseHz == 60)
-    #expect(ThermalPolicy.budget(.fair, isRecording: false, smoothMode: true)
-            == PerceptionBudget(poseHz: 24, objectHz: 10, chamsAllowed: true, showHeatWarning: false, hudHz: 60))
-    #expect(ThermalPolicy.budget(.serious, isRecording: false, smoothMode: false)
-            == PerceptionBudget(poseHz: 15, objectHz: 5, chamsAllowed: false, showHeatWarning: false, hudHz: 30))
-    #expect(ThermalPolicy.budget(.critical, isRecording: false, smoothMode: false)
-            == PerceptionBudget(poseHz: 10, objectHz: 3, chamsAllowed: false, showHeatWarning: true, hudHz: 30))
-    #expect(ThermalPolicy.budget(.nominal, isRecording: true, smoothMode: true).poseHz == 24)
+@Test func thermalBudgetsV3() {
+    #expect(ThermalPolicy.budget(.nominal, isRecording: false)
+            == PerceptionBudget(poseHz: 60, objectHz: 30, showHeatWarning: false, hudHz: 60))
+    #expect(ThermalPolicy.budget(.fair, isRecording: false)
+            == PerceptionBudget(poseHz: 30, objectHz: 15, showHeatWarning: false, hudHz: 60))
+    #expect(ThermalPolicy.budget(.serious, isRecording: false)
+            == PerceptionBudget(poseHz: 20, objectHz: 8, showHeatWarning: false, hudHz: 30))
+    #expect(ThermalPolicy.budget(.critical, isRecording: false)
+            == PerceptionBudget(poseHz: 12, objectHz: 4, showHeatWarning: true, hudHz: 30))
+    let recording = ThermalPolicy.budget(.nominal, isRecording: true)
+    #expect(recording.poseHz == 30 && recording.objectHz == 15)
+    #expect(ThermalPolicy.budget(.critical, isRecording: true).poseHz == 12)
 }

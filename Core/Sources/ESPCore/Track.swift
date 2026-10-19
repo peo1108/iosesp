@@ -21,10 +21,12 @@ public struct Track: Identifiable, Sendable {
     public var occlusion: Occlusion
     public var hits: Int
     public var lastSeen: TimeInterval
+    /// When the track was created, for "time in frame".
+    public var firstSeen: TimeInterval
 
     public init(id: Int, state: TrackState, box: Rect, kind: EntityKind, confidence: Float, joints: [Joint: Vec2],
                 worldPosition: Vec3?, velocity: Vec3, distance: Float, distanceIsEstimated: Bool, heightMeters: Float,
-                yaw: Float, occlusion: Occlusion, hits: Int, lastSeen: TimeInterval) {
+                yaw: Float, occlusion: Occlusion, hits: Int, lastSeen: TimeInterval, firstSeen: TimeInterval? = nil) {
         self.id = id
         self.state = state
         self.box = box
@@ -40,6 +42,7 @@ public struct Track: Identifiable, Sendable {
         self.occlusion = occlusion
         self.hits = hits
         self.lastSeen = lastSeen
+        self.firstSeen = firstSeen ?? lastSeen
     }
 
     public var speed: Float { length(velocity) }

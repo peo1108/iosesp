@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Glass arrows on the screen edge pointing at players out of view.
+/// Glass arrows on the screen edge pointing at people and animals out of view.
 struct OffscreenArrowsView: View {
     let markers: [OffscreenMarker]
 
@@ -15,7 +15,7 @@ struct OffscreenArrowsView: View {
                             .rotationEffect(.radians(marker.angle))
                             .frame(width: 30, height: 30)
                             .glassEffect(.regular.tint(marker.color.opacity(0.25)), in: .circle)
-                        Text(String(format: "%.0fm", marker.distance))
+                        Text(String(format: "%@%.0fm", marker.estimated ? "~" : "", marker.distance))
                             .font(.caption2.weight(.semibold))
                             .monospacedDigit()
                             .shadow(color: .black.opacity(0.5), radius: 2)
