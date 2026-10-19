@@ -98,7 +98,8 @@ enum ESPLayout {
         let now = ScreenMapper(frame: frame, viewSize: viewSize, orientation: orientation)
         let then = store.detectionCamera
 
-        let players = store.confirmed.prefix(8).map { track in
+        // Eliminated players vanish until they respawn.
+        let players = store.confirmed.filter { !store.isEliminated($0.id) }.prefix(8).map { track in
             var thenAnchor = CGPoint.zero, nowAnchor = CGPoint.zero, scale: CGFloat = 1
             var anchored = false
             if store.trackingNormal, let world = track.worldPosition, let then,

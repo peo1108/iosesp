@@ -33,6 +33,7 @@ final class AppModel {
         // Idle at 10 Hz when nothing is shown, so a reveal is instant without heating the phone.
         pipeline.targetHz = needsPerception ? budget.hz : min(budget.hz, 10)
         pipeline.wantMask = settings.settings.chams && budget.chamsAllowed
+        store.naturalHealth = settings.settings.naturalHealth
     }
 }
 

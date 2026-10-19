@@ -2,11 +2,11 @@ import SwiftUI
 import UIKit
 
 /// Transparent touch layer: 3-finger double tap toggles the menu, 3-finger hold toggles recording,
-/// a 1-finger tap reports its location (shooting, closing the menu).
+/// a 1-finger tap reports its location and the layer's size (shooting, closing the menu).
 struct GestureLayer: UIViewRepresentable {
     var onToggleMenu: () -> Void
     var onToggleRecording: () -> Void
-    var onTap: (CGPoint) -> Void
+    var onTap: (CGPoint, CGSize) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -56,7 +56,7 @@ struct GestureLayer: UIViewRepresentable {
         }
 
         @objc func tap(_ recognizer: UITapGestureRecognizer) {
-            parent.onTap(recognizer.location(in: recognizer.view))
+            parent.onTap(recognizer.location(in: recognizer.view), recognizer.view?.bounds.size ?? .zero)
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
