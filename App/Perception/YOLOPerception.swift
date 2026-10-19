@@ -2,7 +2,7 @@ import CoreML
 import ESPCore
 import Vision
 
-/// People (YOLO11m-pose, plus YOLO11m as a backup for half-hidden people) and animals (YOLO11m) via CoreML
+/// People (YOLO11s-pose, plus YOLO11s as a backup for half-hidden people) and animals (YOLO11s) via CoreML
 /// on the Neural Engine.
 /// Not thread-safe: call from one queue. `init` fails when the pose model is missing, fails to load or has an
 /// unexpected output; the object model is optional (no animals without it).

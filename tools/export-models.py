@@ -15,8 +15,8 @@ from ultralytics import YOLO
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WORK = ROOT / "build" / "models"
 OUT = ROOT / "App" / "Models"
-# "m": the most accurate size that still runs in real time on the Neural Engine.
-SIZE = "m"
+# "s": "m" at 896x672 ran 5-8 fps on an iPhone 16 Pro Max; "s" is ~3x lighter and still well above "n".
+SIZE = "s"
 
 WORK.mkdir(parents=True, exist_ok=True)
 if OUT.exists():
