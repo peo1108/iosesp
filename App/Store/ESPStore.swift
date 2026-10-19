@@ -13,11 +13,18 @@ final class ESPStore {
     var fps: Double = 0
     var trackingNormal = true
     var hasDepth = false
+    /// Person-segmentation mask in captured-image space (white, alpha = person), refreshed ~10 Hz.
+    var chamsMask: CGImage?
 
     @ObservationIgnored private var identities: [Int: PlayerIdentity] = [:]
     @ObservationIgnored private var lastPublish: Date?
 
     var confirmed: [Track] { tracks.filter { $0.state == .confirmed } }
+
+    /// 0…100. Full until the game layer is wired in.
+    func health(for id: Int) -> Float {
+        100
+    }
 
     func identity(for id: Int) -> PlayerIdentity {
         if let cached = identities[id] { return cached }

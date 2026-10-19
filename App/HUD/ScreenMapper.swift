@@ -18,6 +18,23 @@ struct ScreenMapper {
         imageToView = frame.displayTransform(for: orientation, viewportSize: viewSize)
     }
 
+    /// Maps the unit square of the captured image onto the view (may include a 180° turn in landscapeLeft).
+    var normalizedImageToView: CGAffineTransform {
+        imageToView.concatenating(CGAffineTransform(scaleX: viewSize.width, y: viewSize.height))
+    }
+
+    /// Plain pinhole projection that keeps going for points behind the camera (they come out mirrored),
+    /// which is what edge arrows need. Never nil.
+    func naivePoint(world: Vec3) -> CGPoint {
+        let k = CameraIntrinsics(camera)
+        let c = SpatialMath.cameraSpace(world: world, cameraToWorld: cameraToWorld)
+        var depth = -c.z
+        if abs(depth) < 0.01 { depth = depth < 0 ? -0.01 : 0.01 }
+        let u = (k.fx * c.x / depth + k.cx) / k.imageSize.x
+        let v = (-k.fy * c.y / depth + k.cy) / k.imageSize.y
+        return point(normalized: Vec2(u, v))
+    }
+
     func point(normalized p: Vec2) -> CGPoint {
         let n = CGPoint(x: CGFloat(p.x), y: CGFloat(p.y)).applying(imageToView)
         return CGPoint(x: n.x * viewSize.width, y: n.y * viewSize.height)

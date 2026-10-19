@@ -1,5 +1,6 @@
 import CoreVideo
 import ESPCore
+import QuartzCore
 import Vision
 
 /// Runs Vision on one camera image and returns the people in it. Not thread-safe: call from one queue.
@@ -10,6 +11,13 @@ final class PerceptionPipeline {
         return request
     }()
     private let pose = VNDetectHumanBodyPoseRequest()
+    private let segmentation: VNGeneratePersonSegmentationRequest = {
+        let request = VNGeneratePersonSegmentationRequest()
+        request.qualityLevel = .balanced
+        request.outputPixelFormat = kCVPixelFormatType_OneComponent8
+        return request
+    }()
+    private var lastMask: CFTimeInterval = 0
 
     private static let jointNames: [(Joint, VNHumanBodyPoseObservation.JointName)] = [
         (.nose, .nose), (.leftEye, .leftEye), (.rightEye, .rightEye), (.leftEar, .leftEar), (.rightEar, .rightEar),
@@ -19,10 +27,20 @@ final class PerceptionPipeline {
         (.leftKnee, .leftKnee), (.rightKnee, .rightKnee), (.leftAnkle, .leftAnkle), (.rightAnkle, .rightAnkle),
     ]
 
+    /// `mask` is a person-segmentation buffer (OneComponent8, captured-image orientation), produced at most
+    /// every 0.1 s and only when `wantMask` is set; nil otherwise.
     func detect(in pixelBuffer: CVPixelBuffer, wantMask: Bool) -> (people: [RawDetection], mask: CVPixelBuffer?) {
+        let now = CACurrentMediaTime()
+        let maskDue = wantMask && now - lastMask >= 0.1
+        var requests: [VNRequest] = [rectangles, pose]
+        if maskDue {
+            requests.append(segmentation)
+            lastMask = now
+        }
+
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
         do {
-            try handler.perform([rectangles, pose])
+            try handler.perform(requests)
         } catch {
             return ([], nil)
         }
@@ -47,7 +65,9 @@ final class PerceptionPipeline {
                 bestShare[best.index] = best.share
             }
         }
-        return (people, nil)
+
+        let mask = maskDue ? segmentation.results?.first?.pixelBuffer : nil
+        return (people, mask)
     }
 
     private static func joints(of observation: VNHumanBodyPoseObservation) -> [Joint: Vec2] {

@@ -8,11 +8,13 @@ struct ESPOverlay: View {
 
     var body: some View {
         GeometryReader { geo in
-            TimelineView(.animation(minimumInterval: 1.0 / 60)) { _ in
-                let layouts = currentLayouts(size: geo.size)
+            TimelineView(.animation(minimumInterval: 1.0 / 60)) { timeline in
+                let layout = currentLayout(size: geo.size)
                 ZStack {
-                    ESPCanvas(layouts: layouts, boxStyle: .corner)
-                    PlayerGlassViews(layouts: layouts)
+                    ChamsView(mask: store.chamsMask, mapper: layout?.mapper, accent: Color(uiColor: .systemBlue), time: timeline.date)
+                    ESPCanvas(layouts: layout?.players ?? [], options: .init(boxStyle: .threeD))
+                    PlayerGlassViews(layouts: layout?.players ?? [])
+                    OffscreenArrowsView(markers: layout?.offscreen ?? [])
                 }
             }
         }
@@ -20,8 +22,8 @@ struct ESPOverlay: View {
         .allowsHitTesting(false)
     }
 
-    private func currentLayouts(size: CGSize) -> [PlayerLayout] {
-        guard let frame = capture.session.currentFrame else { return [] }
+    private func currentLayout(size: CGSize) -> ESPFrameLayout? {
+        guard let frame = capture.session.currentFrame else { return nil }
         return ESPLayout.compute(store: store, frame: frame, viewSize: size, lockedID: nil)
     }
 }
