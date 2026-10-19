@@ -94,8 +94,9 @@ TWO_WHEELERS = {"Xe máy", "Xe đạp"}
 
 def riders(tracks, frame_count: int, fps: float):
     """Which people are riding which two-wheeler, per frame: {frame: {vehicle_key: [person_track, ...]}} and the set
-    of (person_key, frame) to hide. A person rides a bike when their box sits over it (wide horizontal overlap,
-    feet down in the bike's lower part); decided per pair with a ±0.4 s majority vote so it doesn't flicker."""
+    of (person_key, frame) to hide. A person rides a bike when their box sits over it (centre within the bike's width,
+    wide horizontal overlap, feet down in the bike's lower part); decided per pair with a ±0.4 s majority vote so it
+    doesn't flicker, and each person goes to the one bike they overlap most (dense traffic has bikes side by side)."""
     bikes = [t for t in tracks if t.label in TWO_WHEELERS]
     people = [t for t in tracks if t.is_person]
     riding: dict[int, dict[str, list]] = {}
@@ -103,6 +104,7 @@ def riders(tracks, frame_count: int, fps: float):
     if not bikes or not people:
         return riding, hidden
     half = max(1, int(0.4 * fps))
+    claims: dict[tuple[str, int], tuple[float, str, object]] = {}   # (person, frame) → best (overlap, bike, person)
     for v in bikes:
         v_at = {int(f): i for i, f in enumerate(v.span)}
         for p in people:
@@ -110,29 +112,23 @@ def riders(tracks, frame_count: int, fps: float):
             if len(common) < 3:
                 continue
             p_at = {int(f): i for i, f in enumerate(p.span)}
-            on = []
+            on, score = [], []
             for f in common:
                 px0, py0, px1, py1 = p.box[p_at[f]]
                 vx0, vy0, vx1, vy1 = v.box[v_at[f]]
                 overlap = min(px1, vx1) - max(px0, vx0)
                 vh = vy1 - vy0
-                on.append(overlap > 0.5 * min(px1 - px0, vx1 - vx0)
+                centre = (px0 + px1) / 2
+                on.append(vx0 <= centre <= vx1 and overlap > 0.5 * min(px1 - px0, vx1 - vx0)
                           and vy0 + 0.3 * vh < py1 < vy1 + 0.2 * vh)
-            on = np.array(on, dtype=float)
-            vote = np.convolve(on, np.ones(2 * half + 1) / (2 * half + 1), mode="same") > 0.5
-            for f, r in zip(common, vote):
-                if r:
-                    riding.setdefault(f, {}).setdefault(v.key, []).append(p)
-                    hidden.add((p.key, f))
-    # A person rides at most one bike per frame: the first bike to claim them keeps them.
-    seen: dict[tuple[str, int], str] = {}
-    for f, by_bike in riding.items():
-        for vkey in list(by_bike):
-            kept = []
-            for p in by_bike[vkey]:
-                if seen.setdefault((p.key, f), vkey) == vkey:
-                    kept.append(p)
-            by_bike[vkey] = kept
+                score.append(overlap / max(px1 - px0, 1e-6))
+            vote = np.convolve(np.array(on, dtype=float), np.ones(2 * half + 1) / (2 * half + 1), mode="same") > 0.5
+            for f, r, sc in zip(common, vote, score):
+                if r and sc > claims.get((p.key, f), (-1.0,))[0]:
+                    claims[(p.key, f)] = (sc, v.key, p)
+    for (pkey, f), (_, vkey, p) in claims.items():
+        riding.setdefault(f, {}).setdefault(vkey, []).append(p)
+        hidden.add((pkey, f))
     return riding, hidden
 
 

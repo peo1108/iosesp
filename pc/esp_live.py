@@ -315,12 +315,13 @@ def _blend_roi(img, x0, y0, x1, y1, draw, alpha):
     cv2.addWeighted(layer, alpha, roi, 1 - alpha, 0, roi)
 
 
-def corners(img, box, color, d):
-    """Thin corner box: 0.8-1.6 px wide (scaled to the frame), bold and glowing near, faded far."""
+def corners(img, box, color, d, ghost=False):
+    """Thin corner box: 0.8-1.6 px wide (scaled to the frame), bold and glowing near, faded far. `ghost` (hidden
+    behind something, position inferred) draws it thin and faint with no glow."""
     x0, y0, x1, y1 = (int(v) for v in box)
     n = nearness(d)
     scale = max(img.shape[0] / 720, 1)
-    width = max(1, round((0.8 + 0.8 * n) * scale))
+    width = max(1, round((0.8 + 0.8 * n) * scale * (0.7 if ghost else 1)))
     glow = round(3 * n * scale)
     l = int(min(x1 - x0, y1 - y0) * 0.22)
     segs = [((x0, y0), (x0 + l, y0)), ((x0, y0), (x0, y0 + l)), ((x1, y0), (x1 - l, y0)), ((x1, y0), (x1, y0 + l)),
@@ -333,20 +334,21 @@ def corners(img, box, color, d):
                 cv2.line(layer, (a[0] - ox, a[1] - oy), (b[0] - ox, b[1] - oy), colour, thickness, cv2.LINE_AA)
         return draw
 
-    if n > 0.05:
+    if n > 0.05 and not ghost:
         _blend_roi(img, x0 - pad, y0 - pad, x1 + pad, y1 + pad, lines(width + glow, color), 0.18 * n)
+
     def body(layer, ox, oy):
         lines(width + 1, (0, 0, 0))(layer, ox, oy)
         lines(width, color)(layer, ox, oy)
-    _blend_roi(img, x0 - pad, y0 - pad, x1 + pad, y1 + pad, body, 0.45 + 0.55 * n)
+    _blend_roi(img, x0 - pad, y0 - pad, x1 + pad, y1 + pad, body, (0.45 + 0.55 * n) * (0.45 if ghost else 1))
 
 
-def snapline(img, box, color, d):
-    """Lite line from the top centre to the box's top edge, fading in toward the box."""
+def snapline(img, box, color, d, ghost=False):
+    """Lite line from the top centre to the box's top edge, fading in toward the box (fainter when `ghost`)."""
     x0, y0, x1, _ = box
     top = np.array([img.shape[1] / 2, 0.0])
     end = np.array([(x0 + x1) / 2, y0])
-    opacity = 0.7 * (0.45 + 0.55 * nearness(d))
+    opacity = 0.7 * (0.45 + 0.55 * nearness(d)) * (0.45 if ghost else 1)
     steps = 10
     for i in range(steps):
         a, b = top + (end - top) * i / steps, top + (end - top) * (i + 1) / steps

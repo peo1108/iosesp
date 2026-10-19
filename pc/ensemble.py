@@ -130,3 +130,79 @@ def detr_detect(model, rgb: np.ndarray, threshold: float):
     if not boxes:
         return np.zeros((0, 4)), np.zeros(0), np.zeros(0, int)
     return np.concatenate(boxes), np.concatenate(scores), np.concatenate(classes)
+
+
+def nms(boxes: np.ndarray, scores: np.ndarray, iou: float = 0.5) -> np.ndarray:
+    """Indices kept by greedy non-maximum suppression, best first."""
+    order = np.argsort(-scores)
+    keep = []
+    while order.size:
+        i = order[0]
+        keep.append(i)
+        if order.size == 1:
+            break
+        rest = order[1:]
+        order = rest[iou_matrix(boxes[i:i + 1], boxes[rest])[0] < iou]
+    return np.array(keep, dtype=int)
+
+
+def detr_tiles(model, rgb: np.ndarray, threshold: float, grid: int = 2, overlap: float = 0.25):
+    """RF-DETR on a grid × grid of overlapping tiles, each blown up to the model's input, for people and vehicles
+    only a few dozen pixels tall. Keeps only small detections (big ones are the full-frame pass's job) that don't
+    touch an inner tile edge (the overlapping neighbour sees those whole), merged across tiles."""
+    from PIL import Image
+
+    H, W = rgb.shape[:2]
+    tw, th = int(W / (grid - (grid - 1) * overlap)), int(H / (grid - (grid - 1) * overlap))
+    xs = np.linspace(0, W - tw, grid).astype(int)
+    ys = np.linspace(0, H - th, grid).astype(int)
+    boxes, scores, classes = [], [], []
+    for y in ys:
+        for x in xs:
+            d = model.predict(Image.fromarray(np.ascontiguousarray(rgb[y:y + th, x:x + tw])), threshold=threshold)
+            b = np.asarray(d.xyxy, np.float64).reshape(-1, 4)
+            if not len(b):
+                continue
+            edge = 3
+            inner = ((b[:, 0] < edge) & (x > 0)) | ((b[:, 2] > tw - edge) & (x + tw < W)) \
+                | ((b[:, 1] < edge) & (y > 0)) | ((b[:, 3] > th - edge) & (y + th < H))
+            small = (b[:, 3] - b[:, 1]) < 0.5 * th
+            ok = small & ~inner
+            boxes.append(b[ok] + [x, y, x, y])
+            scores.append(np.asarray(d.confidence, np.float64)[ok])
+            classes.append(np.asarray(d.class_id, int)[ok])
+    if not boxes:
+        return np.zeros((0, 4)), np.zeros(0), np.zeros(0, int)
+    boxes, scores, classes = np.concatenate(boxes), np.concatenate(scores), np.concatenate(classes)
+    keep = np.concatenate([np.flatnonzero(classes == c)[nms(boxes[classes == c], scores[classes == c])]
+                           for c in np.unique(classes)]) if len(classes) else np.zeros(0, int)
+    return boxes[keep], scores[keep], classes[keep]
+
+
+def merge_detections(full, extra, match_iou: float = 0.5, extra_penalty: float = 0.9):
+    """Class-wise merge of the full-frame detections with extra ones (the tiles): a pair becomes one confidence-
+    weighted box; full-frame-only boxes keep their score; extra-only boxes (the far, small finds) get
+    `extra_penalty` so the tracker leans on boxes both passes agree on."""
+    (fb, fc, fk), (eb, ec, ek) = full, extra
+    boxes, scores, classes = [], [], []
+    for cls in set(fk.tolist()) | set(ek.tolist()):
+        a, ca = fb[fk == cls], fc[fk == cls]
+        b, cb = eb[ek == cls], ec[ek == cls]
+        iou = iou_matrix(a, b)
+        used_a, used_b = set(), set()
+        for _, i, j in sorted(((iou[i, j], i, j) for i in range(len(a)) for j in range(len(b))
+                               if iou[i, j] >= match_iou), reverse=True):
+            if i in used_a or j in used_b:
+                continue
+            used_a.add(i), used_b.add(j)
+            w = np.array([ca[i], cb[j]])
+            boxes.append((a[i] * w[0] + b[j] * w[1]) / w.sum()); scores.append(w.max()); classes.append(cls)
+        for i in range(len(a)):
+            if i not in used_a:
+                boxes.append(a[i]); scores.append(ca[i]); classes.append(cls)
+        for j in range(len(b)):
+            if j not in used_b:
+                boxes.append(b[j]); scores.append(cb[j] * extra_penalty); classes.append(cls)
+    if not boxes:
+        return np.zeros((0, 4)), np.zeros(0), np.zeros(0, int)
+    return np.array(boxes).reshape(-1, 4), np.array(scores), np.array(classes, dtype=int)
