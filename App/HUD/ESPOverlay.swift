@@ -5,16 +5,35 @@ import SwiftUI
 struct ESPOverlay: View {
     let capture: CaptureEngine
     let store: ESPStore
+    let settings: Settings
+    let chamsAllowed: Bool
+
+    private var showsAnything: Bool {
+        settings.box || settings.skeleton || settings.headDot || settings.snaplines || settings.name
+            || settings.distance || settings.health || settings.offscreenArrows || showsChams
+    }
+
+    private var showsChams: Bool { settings.chams && chamsAllowed }
 
     var body: some View {
         GeometryReader { geo in
-            TimelineView(.animation(minimumInterval: 1.0 / 60)) { timeline in
-                let layout = currentLayout(size: geo.size)
-                ZStack {
-                    ChamsView(mask: store.chamsMask, mapper: layout?.mapper, accent: Color(uiColor: .systemBlue), time: timeline.date)
-                    ESPCanvas(layouts: layout?.players ?? [], options: .init(boxStyle: .threeD))
-                    PlayerGlassViews(layouts: layout?.players ?? [])
-                    OffscreenArrowsView(markers: layout?.offscreen ?? [])
+            if showsAnything {
+                TimelineView(.animation(minimumInterval: 1.0 / 60)) { timeline in
+                    let layout = currentLayout(size: geo.size)
+                    ZStack {
+                        if showsChams {
+                            ChamsView(mask: store.chamsMask, mapper: layout?.mapper,
+                                      accent: Palette.accent(settings.accent), time: timeline.date)
+                        }
+                        ESPCanvas(layouts: layout?.players ?? [],
+                                  options: .init(box: settings.box, boxStyle: settings.boxStyle, skeleton: settings.skeleton,
+                                                 headDot: settings.headDot, snaplines: settings.snaplines))
+                        PlayerGlassViews(layouts: layout?.players ?? [],
+                                         options: .init(name: settings.name, distance: settings.distance, health: settings.health))
+                        if settings.offscreenArrows {
+                            OffscreenArrowsView(markers: layout?.offscreen ?? [])
+                        }
+                    }
                 }
             }
         }
