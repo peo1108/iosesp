@@ -8,7 +8,7 @@ struct RecordButton: View {
     var body: some View {
         Button(action: action) {
             RoundedRectangle(cornerRadius: isRecording ? 6 : 22, style: .continuous)
-                .fill(Palette.locked)
+                .fill(Palette.alert)
                 .frame(width: isRecording ? 26 : 44, height: isRecording ? 26 : 44)
                 .frame(width: 64, height: 64)
                 .glassEffect(.regular.interactive(), in: .circle)
@@ -24,7 +24,7 @@ struct RecordingDot: View {
 
     var body: some View {
         Circle()
-            .fill(Palette.locked)
+            .fill(Palette.alert)
             .frame(width: 10, height: 10)
             .opacity(dim ? 0.4 : 1)
             .padding(6)

@@ -4,7 +4,8 @@ import SwiftUI
 enum Palette {
     static let visible = Color(uiColor: .systemGreen)
     static let partial = Color(uiColor: .systemYellow)
-    static let locked = Color(uiColor: .systemRed)
+    static let animal = Color(uiColor: .systemOrange)
+    static let alert = Color(uiColor: .systemRed)
 
     static func accent(_ name: AccentName) -> Color {
         switch name {
@@ -19,8 +20,8 @@ enum Palette {
         }
     }
 
-    static func color(for track: Track, locked isLocked: Bool) -> Color {
-        if isLocked { return locked }
+    static func color(for track: Track) -> Color {
+        if !track.kind.isPerson { return animal }
         return track.occlusion == .partial ? partial : visible
     }
 }

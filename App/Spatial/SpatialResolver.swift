@@ -59,7 +59,8 @@ struct SpatialResolver {
             occlusion = .partial
         }
 
-        return Detection(box: box, joints: person.joints, worldPosition: base, distance: d,
+        return Detection(box: box, kind: person.kind, confidence: person.confidence, joints: person.joints,
+                         worldPosition: base, distance: d,
                          distanceIsEstimated: estimated, heightMeters: height, yaw: yaw, occlusion: occlusion)
     }
 }

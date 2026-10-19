@@ -14,7 +14,7 @@ struct OffscreenArrowsView: View {
                             .font(.system(size: 12, weight: .bold))
                             .rotationEffect(.radians(marker.angle))
                             .frame(width: 30, height: 30)
-                            .glassEffect(.regular.tint(Palette.visible.opacity(0.25)), in: .circle)
+                            .glassEffect(.regular.tint(marker.color.opacity(0.25)), in: .circle)
                         Text(String(format: "%.0fm", marker.distance))
                             .font(.caption2.weight(.semibold))
                             .monospacedDigit()

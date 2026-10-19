@@ -55,6 +55,9 @@ struct ESPCanvas: View {
             }
         case .full:
             path.addRoundedRect(in: r, cornerSize: CGSize(width: 4, height: 4))
+        case .glass:
+            // The frosted fill is drawn by PlayerGlassViews; the canvas adds the rim.
+            path.addRoundedRect(in: r, cornerSize: CGSize(width: 12, height: 12), style: .continuous)
         case .corner:
             let l = min(r.width, r.height) * 0.22
             for (corner, dx, dy) in [(CGPoint(x: r.minX, y: r.minY), 1.0, 1.0), (CGPoint(x: r.maxX, y: r.minY), -1.0, 1.0),

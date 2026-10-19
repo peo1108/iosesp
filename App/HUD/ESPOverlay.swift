@@ -1,8 +1,8 @@
 import ESPCore
 import SwiftUI
 
-/// Everything drawn over the camera — ESP on people plus the HUD — re-laid-out every display frame
-/// from the latest camera pose. Ignores the safe area; HUD pieces pad themselves by the window insets.
+/// Everything drawn over the camera — ESP on people and animals plus the HUD — re-laid-out every display
+/// frame from the latest camera pose. Ignores the safe area; HUD pieces pad themselves by the window insets.
 struct ESPOverlay: View {
     let capture: CaptureEngine
     let store: ESPStore
@@ -13,16 +13,15 @@ struct ESPOverlay: View {
 
     private var showsAnything: Bool {
         let s = settings
-        return s.box || s.skeleton || s.headDot || s.snaplines || s.name || s.distance || s.health
-            || s.offscreenArrows || showsChams || s.aimbot || s.fovCircle || s.crosshair
-            || s.stats || s.radar || s.fakeIsland || s.watermark
+        return s.box || s.skeleton || s.headDot || s.snaplines || s.label || s.distance || s.offscreenArrows
+            || showsChams || s.stats || s.radar || s.fakeIsland || s.watermark
     }
 
     var body: some View {
         GeometryReader { geo in
             if showsAnything {
                 TimelineView(.animation(minimumInterval: 1.0 / 60)) { timeline in
-                    content(frame: frameState(size: geo.size), size: geo.size, time: timeline.date)
+                    content(layout: currentLayout(size: geo.size), time: timeline.date)
                 }
             }
         }
@@ -31,38 +30,37 @@ struct ESPOverlay: View {
     }
 
     @ViewBuilder
-    private func content(frame: FrameState, size: CGSize, time: Date) -> some View {
+    private func content(layout: ESPFrameLayout?, time: Date) -> some View {
         let accent = Palette.accent(settings.accent)
         let insets = InterfaceOrientation.safeAreaInsets
         let islandLeading = InterfaceOrientation.islandOnLeading
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let players = visible(layout?.players ?? [])
 
         ZStack {
             if showsChams {
-                ChamsView(mask: store.chamsMask, mapper: frame.layout?.mapper, accent: accent, time: time)
+                ChamsView(mask: store.chamsMask, mapper: layout?.mapper, accent: accent, time: time)
             }
-            ESPCanvas(layouts: frame.players,
+            ESPCanvas(layouts: players,
                       options: .init(box: settings.box, boxStyle: settings.boxStyle.effective(trackingNormal: store.trackingNormal),
                                      skeleton: settings.skeleton, headDot: settings.headDot, snaplines: settings.snaplines))
-            PlayerGlassViews(layouts: frame.players,
-                             options: .init(name: settings.name, distance: settings.distance, health: settings.health))
+            PlayerGlassViews(layouts: players, options: .init(label: settings.label, distance: settings.distance))
             if settings.offscreenArrows {
-                OffscreenArrowsView(markers: frame.layout?.offscreen ?? [])
+                OffscreenArrowsView(markers: (layout?.offscreen ?? []).filter { marker in
+                    settings.showAnimals || store.tracks.first { $0.id == marker.id }?.kind.isPerson ?? true
+                })
             }
-            CrosshairView(showCrosshair: settings.crosshair, showFOV: settings.fovCircle,
-                          fovRadius: CGFloat(settings.fovRadius), center: center, target: frame.aimTarget ?? center,
-                          smooth: settings.smooth, accent: accent)
         }
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 10) {
                 if settings.stats {
-                    StatsView(fps: store.fps, players: store.confirmed.count, trackingNormal: store.trackingNormal,
+                    StatsView(fps: store.fps, players: store.confirmedPeople.count, trackingNormal: store.trackingNormal,
                               heatWarning: budget.showHeatWarning, accent: accent)
                 }
-                if settings.radar, store.trackingNormal, let mapper = frame.layout?.mapper {
-                    RadarView(blips: Radar.blips(store.tracks.compactMap { t in t.worldPosition.map { (id: t.id, world: $0) } },
+                if settings.radar, store.trackingNormal, let mapper = layout?.mapper {
+                    let tracked = store.tracks.filter { settings.showAnimals || $0.kind.isPerson }
+                    RadarView(blips: Radar.blips(tracked.compactMap { t in t.worldPosition.map { (id: t.id, world: $0) } },
                                                  cameraToWorld: mapper.cameraToWorld, range: Float(settings.radarRange)),
-                              lockedID: frame.lockedID, accent: accent, time: time)
+                              animalIDs: Set(tracked.filter { !$0.kind.isPerson }.map(\.id)), accent: accent, time: time)
                 }
             }
             .padding(.leading, insets.left + 4)
@@ -70,7 +68,7 @@ struct ESPOverlay: View {
         }
         .overlay(alignment: islandLeading ? .leading : .trailing) {
             if settings.fakeIsland {
-                FakeIslandView(lockedDistance: frame.lockedDistance, accent: accent)
+                FakeIslandView(text: nearestPersonText(players), accent: accent)
                     .padding(islandLeading ? .leading : .trailing, (islandLeading ? insets.left : insets.right) + 4)
             }
         }
@@ -81,38 +79,22 @@ struct ESPOverlay: View {
                     .padding(.bottom, max(insets.bottom, 12))
             }
         }
-        .sensoryFeedback(.impact(flexibility: .rigid), trigger: frame.lockedID) { old, new in
-            old == nil && new != nil && settings.haptics
-        }
     }
 
-    // MARK: Per-frame state
-
-    struct FrameState {
-        var layout: ESPFrameLayout?
-        var players: [PlayerLayout] = []
-        var lockedID: Int?
-        var aimTarget: CGPoint?
-        var lockedDistance: Float?
+    /// People always; animals only when enabled.
+    private func visible(_ players: [PlayerLayout]) -> [PlayerLayout] {
+        players.filter { settings.showAnimals || $0.track.kind.isPerson }
     }
 
-    private func frameState(size: CGSize) -> FrameState {
-        guard let arFrame = capture.session.currentFrame else { return FrameState() }
-        let layout = ESPLayout.compute(store: store, frame: arFrame, viewSize: size, lockedID: nil)
-        var state = FrameState(layout: layout, players: layout.players)
-
-        guard settings.aimbot else { return state }
-        let center = Vec2(Float(size.width / 2), Float(size.height / 2))
-        let candidates = state.players.map { p -> (id: Int, aimPoint: Vec2) in
-            let a = p.aimPoint(settings.aimTarget)
-            return (p.id, Vec2(Float(a.x), Float(a.y)))
+    private func nearestPersonText(_ players: [PlayerLayout]) -> String? {
+        guard let nearest = players.filter({ $0.track.kind.isPerson }).min(by: { $0.track.distance < $1.track.distance }) else {
+            return nil
         }
-        guard let locked = Aimbot.selectTarget(candidates, center: center, fovRadius: Float(settings.fovRadius)),
-              let index = state.players.firstIndex(where: { $0.id == locked }) else { return state }
-        state.players[index].color = Palette.locked
-        state.lockedID = locked
-        state.aimTarget = state.players[index].aimPoint(settings.aimTarget)
-        state.lockedDistance = state.players[index].track.distance
-        return state
+        return nearest.label + String(format: " · %.1f m", nearest.track.distance)
+    }
+
+    private func currentLayout(size: CGSize) -> ESPFrameLayout? {
+        guard let frame = capture.session.currentFrame else { return nil }
+        return ESPLayout.compute(store: store, frame: frame, viewSize: size)
     }
 }

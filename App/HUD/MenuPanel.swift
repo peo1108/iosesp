@@ -14,38 +14,39 @@ struct MenuPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     presetSection
-                    section("ESP") {
+                    section("Người") {
                         toggle("Box", "square.dashed", \.box)
-                        picker("Kiểu box", "cube", \.boxStyle, [(.corner, "Góc"), (.full, "Đầy đủ"), (.threeD, "3D")])
+                        picker("Kiểu box", "cube", \.boxStyle,
+                               [(.corner, "Góc"), (.full, "Đầy đủ"), (.threeD, "3D"), (.glass, "Kính")])
+                        toggle("Nhãn (Người 01)", "tag.fill", \.label)
+                        toggle("Hành động", "figure.walk.motion", \.activity)
+                        toggle("Thẻ chi tiết", "list.bullet.rectangle.portrait", \.detailCard)
+                        toggle("Khoảng cách", "ruler", \.distance)
                         toggle("Skeleton", "figure.walk", \.skeleton)
+                        toggle("Vòng đầu", "circle", \.headDot)
+                        toggle("Vệt chân", "shoeprints.fill", \.trails)
                         toggle("Chams", "person.fill", \.chams)
                         toggle("Snaplines", "line.diagonal", \.snaplines)
-                        toggle("Tên", "tag.fill", \.name)
-                        toggle("Máu", "heart.fill", \.health)
-                        toggle("Khoảng cách", "ruler", \.distance)
-                        toggle("Head dot", "circle.fill", \.headDot)
                         toggle("Mũi tên ngoài màn hình", "location.north.line.fill", \.offscreenArrows)
                     }
-                    section("Aim") {
-                        toggle("Aimbot", "scope", \.aimbot)
-                        toggle("Vòng FOV", "circle.dashed", \.fovCircle)
-                        slider("Bán kính FOV", "arrow.left.and.right", \.fovRadius, 50...400, "%.0f pt")
-                        slider("Smooth", "wind", \.smooth, 0...1, "%.2f")
-                        picker("Mục tiêu", "target", \.aimTarget, [(.head, "Đầu"), (.chest, "Ngực")])
-                        toggle("Tâm ngắm", "plus", \.crosshair)
-                    }
-                    section("Game") {
-                        toggle("Bắn thử (chạm vào người)", "hand.tap.fill", \.shooting)
-                        toggle("Kill feed", "list.bullet.rectangle", \.killFeed)
-                        toggle("Máu tự nhiên", "waveform.path.ecg", \.naturalHealth)
+                    section("Con vật & đồ vật") {
+                        toggle("Hiện con vật", "pawprint.fill", \.showAnimals)
+                        toggle("Hiện đồ vật", "iphone", \.showObjects)
                     }
                     section("HUD") {
-                        toggle("FPS & số người", "speedometer", \.stats)
+                        toggle("Bộ đếm & FPS", "person.3.fill", \.stats)
+                        toggle("Danh sách trong khung", "list.number", \.playerList)
+                        toggle("Nhật ký sự kiện", "text.bubble.fill", \.eventLog)
                         toggle("Radar", "dot.radiowaves.left.and.right", \.radar)
                         slider("Tầm radar", "scope", \.radarRange, 5...30, "%.0f m")
                         toggle("Dynamic Island", "capsule.fill", \.fakeIsland)
                         toggle("Watermark", "textformat", \.watermark)
                         watermarkField
+                    }
+                    section("Lọc & hiệu năng") {
+                        slider("Tầm xa tối đa", "arrow.up.and.down.and.arrow.left.and.right", \.maxDistance, 5...30, "%.0f m")
+                        slider("Số người tối đa", "person.2.fill", \.maxPeople, 5...20, "%.0f")
+                        toggle("Chế độ mượt (60 Hz)", "bolt.fill", \.smoothMode)
                     }
                     section("Quay video") {
                         toggle("Nút quay trên màn hình", "record.circle", \.recordButton)
@@ -109,7 +110,7 @@ struct MenuPanel: View {
             Picker("Preset", selection: Binding(get: { store.settings.preset },
                                                 set: { store.apply($0) })) {
                 Text("LEGIT").tag(Preset.legit)
-                Text("RAGE").tag(Preset.rage)
+                Text("VIP").tag(Preset.vip)
                 Text("STREAMER").tag(Preset.streamer)
                 Text("OFF").tag(Preset.off)
             }

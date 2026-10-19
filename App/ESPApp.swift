@@ -24,8 +24,9 @@ final class AppModel {
     /// Anything on screen that needs fresh perception results.
     private var needsPerception: Bool {
         let s = settings.settings
-        return s.box || s.skeleton || s.chams || s.snaplines || s.name || s.health || s.distance || s.headDot
-            || s.offscreenArrows || s.aimbot || s.radar || s.stats || s.fakeIsland || s.shooting
+        return s.box || s.skeleton || s.chams || s.snaplines || s.label || s.activity || s.detailCard || s.distance
+            || s.headDot || s.trails || s.offscreenArrows || s.radar || s.stats || s.playerList || s.eventLog
+            || s.fakeIsland || s.showObjects
     }
 
     /// Pushes the thermal budget and current settings into the perception pipeline.
@@ -34,7 +35,6 @@ final class AppModel {
         // Idle at 10 Hz when nothing is shown, so a reveal is instant without heating the phone.
         pipeline.targetHz = needsPerception ? budget.hz : min(budget.hz, 10)
         pipeline.wantMask = settings.settings.chams && budget.chamsAllowed
-        store.naturalHealth = settings.settings.naturalHealth
     }
 }
 

@@ -4,7 +4,8 @@ import SwiftUI
 /// Round glass minimap: the phone sits in the middle facing up, players are dots.
 struct RadarView: View {
     let blips: [RadarBlip]
-    let lockedID: Int?
+    /// Blips drawn orange instead of green.
+    let animalIDs: Set<Int>
     let accent: Color
     let time: Date
 
@@ -36,7 +37,7 @@ struct RadarView: View {
 
             for blip in blips {
                 let p = CGPoint(x: c.x + CGFloat(blip.position.x) * r, y: c.y - CGFloat(blip.position.y) * r)
-                let color = blip.id == lockedID ? Palette.locked : Palette.visible
+                let color = animalIDs.contains(blip.id) ? Palette.animal : Palette.visible
                 context.fill(Path(ellipseIn: CGRect(x: p.x - 3, y: p.y - 3, width: 6, height: 6)), with: .color(color))
             }
 

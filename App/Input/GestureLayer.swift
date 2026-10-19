@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// Transparent touch layer: 3-finger double tap toggles the menu, 3-finger hold toggles recording,
-/// a 1-finger tap reports its location and the layer's size (shooting, closing the menu).
+/// a 1-finger tap reports its location and the layer's size (closes the menu).
 struct GestureLayer: UIViewRepresentable {
     var onToggleMenu: () -> Void
     var onToggleRecording: () -> Void

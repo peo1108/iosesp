@@ -1,19 +1,19 @@
 import SwiftUI
 
-/// A glass pill next to the real Dynamic Island that expands when the aimbot locks on.
+/// A glass pill next to the real Dynamic Island showing the nearest person.
 struct FakeIslandView: View {
-    /// Distance to the locked player, nil when nothing is locked.
-    let lockedDistance: Float?
+    /// e.g. "Người 02 · 1.8 m"; nil when nobody is in view.
+    let text: String?
     let accent: Color
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: lockedDistance == nil ? "scope" : "target")
+            Image(systemName: text == nil ? "scope" : "person.fill")
                 .font(.footnote.weight(.bold))
-                .foregroundStyle(lockedDistance == nil ? accent : Palette.locked)
+                .foregroundStyle(accent)
                 .contentTransition(.symbolEffect(.replace))
-            if let lockedDistance {
-                Text("Locked · \(String(format: "%.1f", lockedDistance)) m")
+            if let text {
+                Text(text)
                     .font(.caption.weight(.semibold))
                     .monospacedDigit()
                     .fixedSize()
@@ -21,8 +21,8 @@ struct FakeIslandView: View {
             }
         }
         .frame(minWidth: 36, minHeight: 36)
-        .padding(.horizontal, lockedDistance == nil ? 0 : 12)
-        .glassEffect(.regular.tint(lockedDistance == nil ? .clear : Palette.locked.opacity(0.25)), in: .capsule)
-        .animation(.spring(duration: 0.4, bounce: 0.25), value: lockedDistance == nil)
+        .padding(.horizontal, text == nil ? 0 : 12)
+        .glassEffect(.regular.tint(text == nil ? .clear : accent.opacity(0.2)), in: .capsule)
+        .animation(.spring(duration: 0.4, bounce: 0.25), value: text == nil)
     }
 }

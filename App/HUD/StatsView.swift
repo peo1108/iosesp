@@ -26,7 +26,7 @@ struct StatsView: View {
             }
             if heatWarning {
                 Label("Máy đang nóng", systemImage: "thermometer.high")
-                    .foregroundStyle(Palette.locked)
+                    .foregroundStyle(Palette.alert)
             }
         }
         .font(.caption.weight(.semibold))

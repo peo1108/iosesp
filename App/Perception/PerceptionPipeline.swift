@@ -52,7 +52,8 @@ final class PerceptionPipeline {
         var people = (rectangles.results ?? []).map { observation in
             let r = observation.boundingBox
             let box = Rect(x: Float(r.minX), y: Float(r.minY), width: Float(r.width), height: Float(r.height))
-            return RawDetection(box: VisionMapping.rect(box, orientation: orientation), joints: [:])
+            return RawDetection(box: VisionMapping.rect(box, orientation: orientation), kind: .person,
+                                confidence: observation.confidence)
         }
 
         // Give each skeleton to the box that contains most of its joints.
