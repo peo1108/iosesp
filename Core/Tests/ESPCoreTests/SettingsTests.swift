@@ -81,6 +81,11 @@ import Testing
     #expect(Settings.decodeOrDefault(nil) == .default)
 }
 
+@Test func numericSettingsClampedOnDecode() {
+    let s = Settings.decodeOrDefault(#"{"radarRange":0,"maxPeople":99,"maxDistance":-1}"#.data(using: .utf8))
+    #expect(s.radarRange == 5 && s.maxPeople == 20 && s.maxDistance == 5)
+}
+
 @Test func v1SettingsFileLoads() {
     let s = Settings.decodeOrDefault(#"{"preset":"rage","aimbot":true,"name":true,"fovRadius":200,"box":true}"#.data(using: .utf8))
     #expect(s.preset == .vip && s.label && s.box)

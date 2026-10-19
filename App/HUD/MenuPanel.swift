@@ -71,6 +71,7 @@ struct MenuPanel: View {
     private var feedbackKey: Settings {
         var s = store.settings
         s.watermarkText = ""
+        s.radarRange = 0; s.maxDistance = 0; s.maxPeople = 0  // sliders: no buzz on every drag tick
         return s
     }
 

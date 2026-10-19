@@ -14,6 +14,9 @@ struct PlayerLayout: Identifiable {
     /// What the person is doing (nil for animals, or before the first activity pass).
     var activity: ActivityState?
     var color: Color
+    /// Meters along the floor from the phone to the person, from the Kalman-predicted position when
+    /// available: smooth, and the same measure the edge arrows use.
+    let distance: Float
     let rect: CGRect
     /// The 8 projected corners of the world-space box (0–3 bottom, 4–7 top), when every corner is in front.
     let corners3D: [CGPoint]?
@@ -37,6 +40,13 @@ struct PlayerLayout: Identifiable {
         let a = Self.move(CGPoint(x: r.minX, y: r.minY), thenAnchor, nowAnchor, scale)
         let b = Self.move(CGPoint(x: r.maxX, y: r.maxY), thenAnchor, nowAnchor, scale)
         rect = CGRect(x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y)
+
+        if let base {
+            let eye = mapper.cameraToWorld.translation
+            distance = Vec2(base.x - eye.x, base.z - eye.z).squareLength.squareRoot()
+        } else {
+            distance = track.distance
+        }
 
         if track.kind.isPerson, let base {
             let points = SpatialMath.boxCorners(base: base, height: track.heightMeters, yaw: track.yaw).map(mapper.point(world:))
@@ -118,7 +128,8 @@ enum ESPLayout {
                 guard let placed = OffscreenArrow.place(target: Vec2(Float(p.x), Float(p.y)),
                                                         isBehind: now.depth(of: world) <= 0, viewSize: size) else { continue }
                 offscreen.append(OffscreenMarker(id: track.id, point: CGPoint(x: CGFloat(placed.point.x), y: CGFloat(placed.point.y)),
-                                                 angle: Double(placed.angle), distance: simd_distance(world, eye),
+                                                 angle: Double(placed.angle),
+                                                 distance: Vec2(world.x - eye.x, world.z - eye.z).squareLength.squareRoot(),
                                                  color: Palette.color(for: track)))
             }
         }

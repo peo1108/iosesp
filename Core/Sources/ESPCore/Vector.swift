@@ -4,6 +4,10 @@ public typealias Vec4 = SIMD4<Float>
 
 public func dot(_ a: Vec3, _ b: Vec3) -> Float { (a * b).sum() }
 
+extension SIMD2 where Scalar == Float {
+    public var squareLength: Float { (self * self).sum() }
+}
+
 public func length(_ v: Vec3) -> Float { dot(v, v).squareRoot() }
 
 public func normalize(_ v: Vec3) -> Vec3 {

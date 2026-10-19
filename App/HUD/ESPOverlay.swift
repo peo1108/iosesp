@@ -36,7 +36,6 @@ struct ESPOverlay: View {
         let insets = InterfaceOrientation.safeAreaInsets
         let islandLeading = InterfaceOrientation.islandOnLeading
         let players = visible(layout?.players ?? [])
-        let shownIDs = Set(players.map(\.id))
 
         ZStack {
             if showsChams {
@@ -83,10 +82,10 @@ struct ESPOverlay: View {
         }
         .overlay(alignment: .topTrailing) {
             if settings.playerList {
-                PlayerListView(rows: players.sorted { $0.track.distance < $1.track.distance }.prefix(6).map { p in
+                PlayerListView(rows: players.sorted { $0.distance < $1.distance }.prefix(6).map { p in
                     PlayerListView.Row(id: p.id, label: p.label,
                                        detail: p.activity.map { "\($0.mainEmoji) \($0.mainText)" } ?? kindEmoji(p.track.kind),
-                                       distance: p.track.distance, color: p.color)
+                                       distance: p.distance, color: p.color)
                 })
                 .padding(.trailing, insets.right + 4)
                 .padding(.top, max(insets.top, 12))
@@ -114,9 +113,9 @@ struct ESPOverlay: View {
 
     /// People within range, nearest first and at most `maxPeople`; animals only when enabled.
     private func visible(_ players: [PlayerLayout]) -> [PlayerLayout] {
-        let inRange = players.filter { $0.track.distance <= Float(settings.maxDistance) }
+        let inRange = players.filter { $0.distance <= Float(settings.maxDistance) }
         let people = inRange.filter { $0.track.kind.isPerson }
-            .sorted { $0.track.distance < $1.track.distance }
+            .sorted { $0.distance < $1.distance }
             .prefix(Int(settings.maxPeople))
         let animals = settings.showAnimals ? inRange.filter { !$0.track.kind.isPerson } : []
         return Array(people) + animals
@@ -128,10 +127,10 @@ struct ESPOverlay: View {
     }
 
     private func nearestPersonText(_ players: [PlayerLayout]) -> String? {
-        guard let nearest = players.filter({ $0.track.kind.isPerson }).min(by: { $0.track.distance < $1.track.distance }) else {
+        guard let nearest = players.filter({ $0.track.kind.isPerson }).min(by: { $0.distance < $1.distance }) else {
             return nil
         }
-        var text = nearest.label + String(format: " · %.1f m", nearest.track.distance)
+        var text = nearest.label + String(format: " · %.1f m", nearest.distance)
         if let action = nearest.activity?.frame.objectAction, action != .none { text += " · " + action.emoji }
         return text
     }

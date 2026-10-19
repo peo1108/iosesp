@@ -49,6 +49,19 @@ struct RootView: View {
 
             if model.capture.authorization == .denied {
                 PermissionView()
+            } else if let failure = model.capture.failure {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundStyle(Palette.partial)
+                    Text("Camera gặp lỗi").font(.title3.weight(.bold))
+                    Text(failure).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button("Thử lại") { model.capture.restart() }
+                        .buttonStyle(.glassProminent)
+                }
+                .frame(maxWidth: 360)
+                .padding(28)
+                .glassEffect(.regular, in: .rect(cornerRadius: 28))
             }
 
             if showSplash {

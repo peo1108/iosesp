@@ -84,7 +84,7 @@ private struct DistanceTag: View {
     let layout: PlayerLayout
 
     var body: some View {
-        Text(String(format: "%@%.1f m", layout.track.distanceIsEstimated ? "~" : "", layout.track.distance))
+        Text(String(format: "%@%.1f m", layout.track.distanceIsEstimated ? "~" : "", layout.distance))
             .font(.caption2.weight(.semibold))
             .monospacedDigit()
             .padding(.horizontal, 8)

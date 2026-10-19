@@ -12,7 +12,7 @@ struct DetailCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            row("ruler", String(format: "%.1f m · %.1f m/s", layout.track.distance, layout.track.speed))
+            row("ruler", String(format: "%.1f m · %.1f m/s", layout.distance, layout.track.speed))
             row(nil, "\(frame.posture.emoji) \(frame.posture.text) · \(frame.motion.emoji) \(frame.motion.text)")
             row(nil, "\(frame.facing.emoji) \(frame.facing.text)")
             if frame.gesture != .none {

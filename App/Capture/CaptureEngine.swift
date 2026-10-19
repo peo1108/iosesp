@@ -17,6 +17,8 @@ final class CaptureEngine: NSObject {
     private(set) var authorization: CameraAuth = .unknown
     private(set) var isInterrupted = false
     private(set) var isRunning = false
+    /// Why the camera isn't running (ARKit unsupported or the session failed); nil when fine.
+    private(set) var failure: String?
 
     @ObservationIgnored private nonisolated let handlerLock = NSLock()
     @ObservationIgnored private nonisolated(unsafe) var storedHandler: ((ARFrame) -> Void)?
@@ -55,7 +57,11 @@ final class CaptureEngine: NSObject {
     }
 
     private func run(reset: Bool) {
-        guard ARWorldTrackingConfiguration.isSupported else { return }
+        guard ARWorldTrackingConfiguration.isSupported else {
+            failure = "Máy này không hỗ trợ ARKit world tracking."
+            return
+        }
+        failure = nil
         let config = ARWorldTrackingConfiguration()
         let sixty = ARWorldTrackingConfiguration.supportedVideoFormats.filter { $0.framesPerSecond == 60 }
         if let best = sixty.max(by: { pixels($0) < pixels($1) }) {
@@ -80,6 +86,20 @@ final class CaptureEngine: NSObject {
 extension CaptureEngine: ARSessionDelegate {
     nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
         frameHandler?(frame)
+    }
+
+    nonisolated func session(_ session: ARSession, didFailWithError error: any Error) {
+        let message = (error as NSError).localizedDescription
+        Task { @MainActor in
+            self.failure = message
+            self.isRunning = false
+        }
+    }
+
+    /// Retry after a failure (the error card's button).
+    func restart() {
+        failure = nil
+        run(reset: true)
     }
 
     nonisolated func sessionWasInterrupted(_ session: ARSession) {
