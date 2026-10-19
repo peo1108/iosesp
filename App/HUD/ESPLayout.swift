@@ -20,8 +20,9 @@ struct PlayerLayout: Identifiable {
     private let nowAnchor: CGPoint
     private let scale: CGFloat
 
+    /// `base` is the predicted feet position for this display frame when the track is world-anchored.
     init(track: Track, label: String, color: Color, mapper: ScreenMapper,
-         thenAnchor: CGPoint, nowAnchor: CGPoint, scale: CGFloat, worldAnchored: Bool) {
+         thenAnchor: CGPoint, nowAnchor: CGPoint, scale: CGFloat, base: Vec3?) {
         id = track.id
         self.track = track
         self.label = label
@@ -35,7 +36,7 @@ struct PlayerLayout: Identifiable {
         let b = Self.move(CGPoint(x: r.maxX, y: r.maxY), thenAnchor, nowAnchor, scale)
         rect = CGRect(x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y)
 
-        if worldAnchored, track.kind.isPerson, let base = track.worldPosition {
+        if track.kind.isPerson, let base {
             let points = SpatialMath.boxCorners(base: base, height: track.heightMeters, yaw: track.yaw).map(mapper.point(world:))
             corners3D = points.contains { $0 == nil } ? nil : points.compactMap { $0 }
         } else {
@@ -85,18 +86,20 @@ enum ESPLayout {
 
         let players = store.confirmed.map { track in
             var thenAnchor = CGPoint.zero, nowAnchor = CGPoint.zero, scale: CGFloat = 1
-            var anchored = false
-            // The camera of the frame this track was last detected in (not just the latest frame).
+            var base: Vec3?
+            // Then: where the track was, seen by the camera of the frame it was last detected in.
+            // Now: where it probably is at this display frame (Kalman velocity), seen by the current camera.
             if store.trackingNormal, let world = track.worldPosition, let then = store.camera(at: track.lastSeen),
-               let p0 = now.point(world: world, camera: then), let p1 = now.point(world: world) {
+               let predicted = track.predictedWorld(at: frame.timestamp),
+               let p0 = now.point(world: world, camera: then), let p1 = now.point(world: predicted) {
                 thenAnchor = p0
                 nowAnchor = p1
-                let d0 = now.depth(of: world, camera: then), d1 = now.depth(of: world)
+                let d0 = now.depth(of: world, camera: then), d1 = now.depth(of: predicted)
                 scale = CGFloat(min(max(d0 / max(d1, 0.1), 0.5), 2))
-                anchored = true
+                base = predicted
             }
             return PlayerLayout(track: track, label: store.label(for: track), color: Palette.color(for: track),
-                                mapper: now, thenAnchor: thenAnchor, nowAnchor: nowAnchor, scale: scale, worldAnchored: anchored)
+                                mapper: now, thenAnchor: thenAnchor, nowAnchor: nowAnchor, scale: scale, base: base)
         }
 
         var offscreen: [OffscreenMarker] = []
@@ -104,7 +107,7 @@ enum ESPLayout {
             let size = Vec2(Float(viewSize.width), Float(viewSize.height))
             let eye = now.cameraToWorld.translation
             for track in store.tracks {
-                guard let world = track.worldPosition else { continue }
+                guard let world = track.predictedWorld(at: frame.timestamp) else { continue }
                 let p = now.naivePoint(world: world)
                 guard let placed = OffscreenArrow.place(target: Vec2(Float(p.x), Float(p.y)),
                                                         isBehind: now.depth(of: world) <= 0, viewSize: size) else { continue }

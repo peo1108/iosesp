@@ -43,4 +43,11 @@ public struct Track: Identifiable, Sendable {
     }
 
     public var speed: Float { length(velocity) }
+
+    /// Where the feet probably are at `time`: the last position carried forward by the velocity, at most 0.3 s.
+    public func predictedWorld(at time: TimeInterval) -> Vec3? {
+        guard let worldPosition else { return nil }
+        let dt = Float(min(max(time - lastSeen, 0), 0.3))
+        return worldPosition + velocity * dt
+    }
 }

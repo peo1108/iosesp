@@ -74,11 +74,74 @@ private func det(_ x: Float, _ y: Float = 0.3, world: Vec3? = nil, distance: Flo
     #expect(r.count == 1 && r.first?.id == 1 && r.first?.state == .confirmed)
 }
 
-@Test func capsAtEightTracks() {
-    let t = Tracker()
+@Test func capsAtMaxTracks() {
+    var config = TrackerConfig()
+    config.maxTracks = 8
+    let t = Tracker(config: config)
     let many = (0..<10).map { det(Float($0) * 0.1, 0) }
     for i in 0..<3 { t.update(many, at: Double(i) / 30) }
     #expect(t.update(many, at: 0.1).count == 8)
+    #expect(TrackerConfig().maxTracks == 30)
+}
+
+private func scored(_ x: Float, _ confidence: Float) -> Detection {
+    var d = det(x)
+    d.confidence = confidence
+    return d
+}
+
+@Test func lowConfidenceKeepsTrackAlive() {
+    let t = Tracker()
+    for i in 0..<3 { t.update([det(0.2)], at: Double(i) / 30) }
+    var r: [Track] = []
+    for i in 3..<33 { r = t.update([scored(0.2, 0.3)], at: Double(i) / 30) }  // a full second of weak detections
+    #expect(r.count == 1 && r[0].id == 1 && r[0].state == .confirmed)
+}
+
+@Test func lowConfidenceNeverStartsTrack() {
+    let t = Tracker()
+    var r: [Track] = []
+    for i in 0..<6 { r = t.update([scored(0.2, 0.3)], at: Double(i) / 30) }
+    #expect(r.isEmpty)
+}
+
+@Test func veryLowConfidenceIsIgnored() {
+    let t = Tracker()
+    for i in 0..<3 { t.update([det(0.2)], at: Double(i) / 30) }
+    let r = t.update([scored(0.2, 0.05)], at: 1.0)
+    #expect(r.first?.state == .lost)
+}
+
+@Test func predictionBridgesMissedFrames() {
+    // Fast mover: 0.02 per frame; after 3 missed frames the stale box barely overlaps, the predicted one does.
+    let t = Tracker()
+    for i in 0..<10 { t.update([det(0.1 + Float(i) * 0.02)], at: Double(i) / 30) }
+    for i in 10..<13 { t.update([], at: Double(i) / 30) }
+    let r = t.update([det(0.1 + 13 * 0.02)], at: 13.0 / 30)
+    #expect(r.count == 1 && r[0].id == 1)
+}
+
+@Test func crossingPeopleKeepIds() {
+    let t = Tracker()
+    var r: [Track] = []
+    for i in 0..<50 {
+        let a = det(0.1 + Float(i) * 0.01)   // walks right
+        let b = det(0.6 - Float(i) * 0.01)   // walks left
+        r = t.update(i < 1 ? [a] : [a, b], at: Double(i) / 30)
+    }
+    let rightWalker = r.first { $0.id == 1 }
+    let leftWalker = r.first { $0.id == 2 }
+    #expect(rightWalker != nil && leftWalker != nil)
+    #expect(rightWalker!.box.x > 0.5 && leftWalker!.box.x < 0.2)
+}
+
+@Test func predictedWorldExtrapolatesAndClamps() {
+    let track = Track(id: 1, state: .confirmed, box: Rect(x: 0, y: 0, width: 0.1, height: 0.1), kind: .person, confidence: 1,
+                      joints: [:], worldPosition: Vec3(0, 0, -3), velocity: Vec3(1, 0, 0), distance: 3,
+                      distanceIsEstimated: false, heightMeters: 1.7, yaw: 0, occlusion: .visible, hits: 3, lastSeen: 1)
+    #expect(abs(track.predictedWorld(at: 1.1)!.x - 0.1) < 1e-5)
+    #expect(abs(track.predictedWorld(at: 5)!.x - 0.3) < 1e-5)
+    #expect(track.predictedWorld(at: 0.5)! == Vec3(0, 0, -3))
 }
 
 @Test func sortsConfirmedByDistanceBeforeLost() {

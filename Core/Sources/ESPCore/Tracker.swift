@@ -1,23 +1,33 @@
 import Foundation
 
 public struct TrackerConfig: Sendable {
-    public var iouThreshold: Float = 0.3
+    /// Detections at or above this start tracks and match first (ByteTrack "high").
+    public var highConfidence: Float = 0.5
+    /// Detections between this and `highConfidence` only keep existing tracks alive.
+    public var lowConfidence: Float = 0.15
+    public var highIoU: Float = 0.2
+    public var lowIoU: Float = 0.5
     public var worldMatchDistance: Float = 0.6
     public var confirmHits = 3
     public var lostAfter: TimeInterval = 0.7
     public var forgetAfter: TimeInterval = 10
-    public var maxTracks = 8
+    public var maxTracks = 30
 
     public init() {}
 }
 
-/// Turns per-frame detections into tracks with stable ids and smoothed geometry.
+/// ByteTrack-style tracker: each track's box is predicted with a constant-velocity Kalman filter before
+/// matching, confident detections match first, weak ones only extend existing tracks, and leftovers are
+/// matched by world position. A second Kalman filter on the feet position gives real-world velocity.
 public final class Tracker {
     private struct Entry {
         var track: Track
-        var boxFilter = OneEuroFilter<Vec4>(minCutoff: 1.2, beta: 4)
+        /// (cx, cy, w, h) in normalized image units.
+        var boxKalman: KalmanCV<Vec4>
+        var boxTime: TimeInterval
+        var predictedBox: Rect
+        var worldKalman: KalmanCV<Vec3>?
         var jointFilters: [Joint: OneEuroFilter<Vec2>] = [:]
-        var worldFilter = OneEuroFilter<Vec3>(minCutoff: 1.0, beta: 0.7)
         /// Yaw is filtered as a unit vector (cos, sin) so it never averages through 0 at ±π.
         var yawFilter = OneEuroFilter<Vec2>(minCutoff: 0.5, beta: 0.3)
         var heightFilter = OneEuroFilter<Vec2>(minCutoff: 0.5, beta: 0.2)
@@ -40,42 +50,23 @@ public final class Tracker {
     /// then left untouched instead of being aged or dropped.
     @discardableResult
     public func update(_ detections: [Detection], at time: TimeInterval, animalsObserved: Bool = true) -> [Track] {
+        for i in entries.indices { predictBox(&entries[i], to: time) }
+
         var freeTracks = Set(entries.indices)
-        var freeDetections = Set(detections.indices)
+        let usable = detections.indices.filter { detections[$0].confidence >= config.lowConfidence }
+        let high = usable.filter { detections[$0].confidence >= config.highConfidence }
+        let low = usable.filter { detections[$0].confidence < config.highConfidence }
+        var freeHigh = Set(high)
 
-        // 1. Overlap in the image, best IoU first. Lost tracks only come back through world position.
-        var overlaps: [(t: Int, d: Int, iou: Float)] = []
-        for t in entries.indices where entries[t].track.state != .lost {
-            for d in detections.indices where detections[d].kind == entries[t].track.kind {
-                let iou = entries[t].track.box.iou(detections[d].box)
-                if iou >= config.iouThreshold { overlaps.append((t, d, iou)) }
-            }
-        }
-        for pair in overlaps.sorted(by: { $0.iou > $1.iou })
-        where freeTracks.contains(pair.t) && freeDetections.contains(pair.d) {
-            apply(detections[pair.d], to: pair.t, at: time)
-            freeTracks.remove(pair.t)
-            freeDetections.remove(pair.d)
-        }
+        // 1. Confident detections against every live track's predicted box.
+        matchByOverlap(Set(high), &freeHigh, &freeTracks, threshold: config.highIoU, detections, at: time)
+        // 2. Weak detections only extend the tracks still unmatched, and need a tighter overlap.
+        var freeLow = Set(low)
+        matchByOverlap(Set(low), &freeLow, &freeTracks, threshold: config.lowIoU, detections, at: time)
+        // 3. Confident leftovers by world proximity (this is also how lost tracks come back).
+        matchByWorld(&freeHigh, &freeTracks, detections, at: time)
 
-        // 2. Proximity in the world, nearest first.
-        var nearby: [(t: Int, d: Int, distance: Float)] = []
-        for t in freeTracks {
-            guard let a = entries[t].track.worldPosition else { continue }
-            for d in freeDetections where detections[d].kind == entries[t].track.kind {
-                guard let b = detections[d].worldPosition else { continue }
-                let distance = length(a - b)
-                if distance < config.worldMatchDistance { nearby.append((t, d, distance)) }
-            }
-        }
-        for pair in nearby.sorted(by: { $0.distance < $1.distance })
-        where freeTracks.contains(pair.t) && freeDetections.contains(pair.d) {
-            apply(detections[pair.d], to: pair.t, at: time)
-            freeTracks.remove(pair.t)
-            freeDetections.remove(pair.d)
-        }
-
-        // 3. Age out unmatched tracks (only kinds this frame actually looked for).
+        // 4. Age out unmatched tracks (only kinds this frame actually looked for).
         var removed = Set<Int>()
         for t in freeTracks where animalsObserved || entries[t].track.kind.isPerson {
             let unseen = time - entries[t].track.lastSeen
@@ -92,8 +83,8 @@ public final class Tracker {
         }
         entries = entries.indices.filter { !removed.contains($0) }.map { entries[$0] }
 
-        // 4. New detections start tentative.
-        for d in freeDetections.sorted() {
+        // 5. Only confident detections start tracks.
+        for d in freeHigh.sorted() {
             entries.append(makeEntry(detections[d], at: time))
         }
 
@@ -105,30 +96,92 @@ public final class Tracker {
         return Array(ordered.prefix(config.maxTracks))
     }
 
+    // MARK: Matching
+
+    private func matchByOverlap(_ candidates: Set<Int>, _ freeDetections: inout Set<Int>, _ freeTracks: inout Set<Int>,
+                                threshold: Float, _ detections: [Detection], at time: TimeInterval) {
+        var pairs: [(t: Int, d: Int, iou: Float)] = []
+        for t in freeTracks where entries[t].track.state != .lost {
+            for d in candidates where detections[d].kind == entries[t].track.kind {
+                let iou = entries[t].predictedBox.iou(detections[d].box)
+                if iou >= threshold { pairs.append((t, d, iou)) }
+            }
+        }
+        for pair in pairs.sorted(by: { $0.iou > $1.iou })
+        where freeTracks.contains(pair.t) && freeDetections.contains(pair.d) {
+            absorb(detections[pair.d], into: &entries[pair.t], at: time)
+            freeTracks.remove(pair.t)
+            freeDetections.remove(pair.d)
+        }
+    }
+
+    private func matchByWorld(_ freeDetections: inout Set<Int>, _ freeTracks: inout Set<Int>,
+                              _ detections: [Detection], at time: TimeInterval) {
+        var pairs: [(t: Int, d: Int, distance: Float)] = []
+        for t in freeTracks {
+            guard let a = entries[t].track.worldPosition else { continue }
+            for d in freeDetections where detections[d].kind == entries[t].track.kind {
+                guard let b = detections[d].worldPosition else { continue }
+                let distance = length(a - b)
+                if distance < config.worldMatchDistance { pairs.append((t, d, distance)) }
+            }
+        }
+        for pair in pairs.sorted(by: { $0.distance < $1.distance })
+        where freeTracks.contains(pair.t) && freeDetections.contains(pair.d) {
+            if entries[pair.t].track.state == .lost {
+                // Revived somewhere else on screen: restart the image motion model and joints.
+                restartBox(&entries[pair.t], at: detections[pair.d].box, time: time)
+                entries[pair.t].jointFilters.removeAll()
+            }
+            absorb(detections[pair.d], into: &entries[pair.t], at: time)
+            freeTracks.remove(pair.t)
+            freeDetections.remove(pair.d)
+        }
+    }
+
+    // MARK: Filters
+
+    private static func state(_ r: Rect) -> Vec4 {
+        Vec4(r.x + r.width / 2, r.y + r.height / 2, r.width, r.height)
+    }
+
+    private static func rect(_ s: Vec4) -> Rect {
+        let w = max(s.z, 0.001), h = max(s.w, 0.001)
+        return Rect(x: s.x - w / 2, y: s.y - h / 2, width: w, height: h)
+    }
+
+    private static func boxKalman(_ r: Rect) -> KalmanCV<Vec4> {
+        KalmanCV(position: state(r), processNoise: 2, measurementNoise: 1e-4)
+    }
+
+    private func predictBox(_ entry: inout Entry, to time: TimeInterval) {
+        entry.boxKalman.predict(dt: Float(time - entry.boxTime))
+        entry.boxTime = max(entry.boxTime, time)
+        entry.predictedBox = Self.rect(entry.boxKalman.position)
+    }
+
+    private func restartBox(_ entry: inout Entry, at box: Rect, time: TimeInterval) {
+        entry.boxKalman = Self.boxKalman(box)
+        entry.boxTime = time
+        entry.predictedBox = box
+    }
+
     private func makeEntry(_ d: Detection, at time: TimeInterval) -> Entry {
         let track = Track(id: nextID, state: .tentative, box: d.box, kind: d.kind, confidence: d.confidence,
-                          joints: [:], worldPosition: nil,
-                          velocity: .zero, distance: d.distance, distanceIsEstimated: d.distanceIsEstimated,
-                          heightMeters: d.heightMeters, yaw: d.yaw, occlusion: d.occlusion, hits: 0, lastSeen: time)
+                          joints: [:], worldPosition: nil, velocity: .zero, distance: d.distance,
+                          distanceIsEstimated: d.distanceIsEstimated, heightMeters: d.heightMeters, yaw: d.yaw,
+                          occlusion: d.occlusion, hits: 0, lastSeen: time)
         nextID += 1
-        var entry = Entry(track: track)
-        absorb(d, into: &entry, at: time)
+        var entry = Entry(track: track, boxKalman: Self.boxKalman(d.box), boxTime: time, predictedBox: d.box)
+        absorb(d, into: &entry, at: time, fresh: true)
         return entry
     }
 
-    private func apply(_ d: Detection, to index: Int, at time: TimeInterval) {
-        if entries[index].track.state == .lost {
-            // Revived somewhere else on screen: don't slide the box across from where it vanished.
-            entries[index].boxFilter.reset()
-            entries[index].jointFilters.removeAll()
-        }
-        absorb(d, into: &entries[index], at: time)
-    }
-
-    private func absorb(_ d: Detection, into entry: inout Entry, at time: TimeInterval) {
+    private func absorb(_ d: Detection, into entry: inout Entry, at time: TimeInterval, fresh: Bool = false) {
         var track = entry.track
-        let b = entry.boxFilter.filter(Vec4(d.box.x, d.box.y, d.box.width, d.box.height), at: time)
-        track.box = Rect(x: b.x, y: b.y, width: b.z, height: b.w)
+        if !fresh { entry.boxKalman.update(Self.state(d.box)) }
+        track.box = Self.rect(entry.boxKalman.position)
+        entry.predictedBox = track.box
 
         var joints: [Joint: Vec2] = [:]
         var filters: [Joint: OneEuroFilter<Vec2>] = [:]
@@ -141,11 +194,15 @@ public final class Tracker {
         entry.jointFilters = filters
 
         if let world = d.worldPosition {
-            let smoothed = entry.worldFilter.filter(world, at: time)
-            if let previous = track.worldPosition, time > track.lastSeen {
-                track.velocity = (smoothed - previous) / Float(time - track.lastSeen)
+            if var k = entry.worldKalman {
+                k.predict(dt: Float(time - track.lastSeen))
+                k.update(world)
+                entry.worldKalman = k
+            } else {
+                entry.worldKalman = KalmanCV(position: world, processNoise: 4, measurementNoise: 0.0025, initialVelocityVariance: 4)
             }
-            track.worldPosition = smoothed
+            track.worldPosition = entry.worldKalman?.position
+            track.velocity = entry.worldKalman?.velocity ?? .zero
         }
 
         track.confidence = d.confidence
