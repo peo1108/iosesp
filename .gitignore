@@ -8,3 +8,8 @@ Payload/
 .swiftpm/
 .superpowers/
 App/Models/
+pc/.venv/
+pc/*.pt
+pc/*.engine
+pc/*.mp4
+pc/*.jpg
