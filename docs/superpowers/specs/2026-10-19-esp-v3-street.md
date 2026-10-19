@@ -115,3 +115,8 @@ ARKit world tracking chỉ dùng cam 1× (Apple xác nhận trên forum), nên 0
   - Phát hiện có độ tự tin 0.25–0.4 cũng tạo được track, nhưng phải khớp 8 lần mới hiện. Chỉ cần một lần khớp tự tin (≥ 0.4) là quay về mức 3 lần.
   - YOLO11n thường (bắt người bị che tốt hơn model pose) chạy ở nửa tần số khi tắt con vật. Người nó thấy mà model pose bỏ sót (`PersonFusion.uncovered`, che phủ > 50%) được thêm vào.
 - **4 góc mảnh hơn:** nét box 0.8–1.6 pt, viền tối và viền sáng mỏng lại.
+- **4K 30 fps (mặc định), chọn được trong menu "4K · 30 fps | HD · 60 fps":**
+  - Cam 1×: `recommendedVideoFormatFor4KResolution` (3840×2160, 16:9).
+  - Cam 0.5×: format 4:3 lớn nhất, rộng tối đa 4096, ở 30 fps.
+  - Ảnh 16:9 được thu nhỏ bằng Lanczos và thêm viền đen thành 640×480 (`ModelInput`). Toạ độ được đổi ngược lại qua `Letterbox`. Ảnh 4:3 vẫn đưa thẳng vào Vision.
+  - Depth map của LiDAR (4:3) được đọc ở dải giữa, khớp với khung 16:9 (`DepthCrop`).

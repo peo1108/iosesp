@@ -16,6 +16,7 @@ final class AppModel {
     init() {
         pipeline = ESPPipeline(capture: capture, store: store)
         capture.setLens(settings.settings.lens)
+        capture.setQuality(settings.settings.quality)
     }
 
     var budget: PerceptionBudget {
@@ -73,6 +74,10 @@ struct ESPApp: App {
                 }
                 .onChange(of: model.settings.settings, initial: true) { model.applyBudget() }
                 .onChange(of: model.settings.settings.lens) { model.applyLens() }
+                .onChange(of: model.settings.settings.quality) {
+                    model.capture.setQuality(model.settings.settings.quality)
+                    model.pipeline.reset()
+                }
                 .onChange(of: model.budget) { model.applyBudget() }
                 .onChange(of: model.orientation.interfaceOrientation, initial: true) {
                     model.pipeline.visionOrientation = model.orientation.visionOrientation

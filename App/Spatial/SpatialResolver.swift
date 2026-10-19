@@ -7,7 +7,7 @@ struct SpatialResolver {
     func resolve(_ raw: [RawDetection], frame: CameraFrame) -> [Detection] {
         let intrinsics = frame.pose.intrinsics
         let cameraToWorld = frame.pose.cameraToWorld
-        let depth = DepthReader(frame.depth)
+        let depth = DepthReader(frame.depth, imageAspect: intrinsics.imageSize.x / intrinsics.imageSize.y)
         defer { depth?.unlock() }
         return raw.map { resolve($0, intrinsics: intrinsics, cameraToWorld: cameraToWorld, depth: depth) }
     }
@@ -83,8 +83,11 @@ private final class DepthReader {
     private let width: Int, height: Int, depthRow: Int, confidenceRow: Int
     private let depthBase: UnsafeMutableRawPointer
     private let confidenceBase: UnsafeMutableRawPointer?
+    private let imageAspect: Float
 
-    init?(_ data: ARDepthData?) {
+    /// `imageAspect` is the camera image's width / height; a 16:9 frame sees the middle band of the 4:3 depth map.
+    init?(_ data: ARDepthData?, imageAspect: Float) {
+        self.imageAspect = imageAspect
         guard let data else { return nil }
         depth = data.depthMap
         confidence = data.confidenceMap
@@ -112,8 +115,9 @@ private final class DepthReader {
         if let confidence { CVPixelBufferUnlockBaseAddress(confidence, .readOnly) }
     }
 
-    /// Value at a normalized image point (the depth map is aligned with the captured image).
-    func sample(_ p: Vec2) -> (depth: Float, confidence: UInt8) {
+    /// Value at a normalized image point.
+    func sample(_ image: Vec2) -> (depth: Float, confidence: UInt8) {
+        let p = DepthCrop.depthPoint(image, imageAspect: imageAspect, depthAspect: Float(width) / Float(height))
         let x = min(max(Int(p.x * Float(width)), 0), width - 1)
         let y = min(max(Int(p.y * Float(height)), 0), height - 1)
         let d = depthBase.advanced(by: y * depthRow).assumingMemoryBound(to: Float32.self)[x]

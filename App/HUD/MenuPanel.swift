@@ -97,6 +97,11 @@ struct MenuPanel: View {
                 Text("0.5× Siêu rộng").tag(CameraLens.ultraWide)
             }
             .pickerStyle(.segmented)
+            Picker("Chất lượng", selection: $store.settings.quality) {
+                Text("4K · 30 fps").tag(VideoQuality.uhd30)
+                Text("HD · 60 fps").tag(VideoQuality.hd60)
+            }
+            .pickerStyle(.segmented)
             if ultraWideMissing {
                 note("Máy này không có camera góc siêu rộng — đang dùng 1×.", symbol: "exclamationmark.triangle.fill",
                      color: Palette.partial)

@@ -13,9 +13,18 @@ public enum CameraLens: String, Codable, CaseIterable, Sendable {
     case ultraWide
 }
 
+/// Camera resolution and frame rate.
+public enum VideoQuality: String, Codable, CaseIterable, Sendable {
+    /// 4K at 30 fps: sharp picture and recordings; boxes update half as often.
+    case uhd30
+    /// 1920×1440 at 60 fps: fastest reactions.
+    case hd60
+}
+
 /// Everything the menu can change. Every flag defaults to off, so a fresh install is a bare camera.
 public struct Settings: Codable, Equatable, Sendable {
     public var lens: CameraLens = .wide
+    public var quality: VideoQuality = .uhd30
 
     // ESP
     public var box = false
@@ -23,7 +32,7 @@ public struct Settings: Codable, Equatable, Sendable {
     /// Card beside each person/animal: name, distance, speed, time in frame.
     public var detailCard = false
     public var offscreenArrows = false
-    /// Thin "lite" line from the bottom of the screen to each box.
+    /// Thin "lite" line from the top of the screen to each box.
     public var snaplines = false
     public var showAnimals = false
 
@@ -66,6 +75,7 @@ public struct Settings: Codable, Equatable, Sendable {
         }
         let d = Settings()
         lens = read(.lens, d.lens)
+        quality = read(.quality, d.quality)
         box = read(.box, d.box)
         boxStyle = read(.boxStyle, d.boxStyle)
         detailCard = read(.detailCard, d.detailCard)

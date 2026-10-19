@@ -9,8 +9,8 @@ import Vision
 final class YOLOPerception {
     private let poseRequest: VNCoreMLRequest
     private let objectRequest: VNCoreMLRequest?
-    /// Model input in pixels (w × h): the camera's 4:3, so `.scaleFill` doesn't distort.
-    private let inputSize = Vec2(640, 480)
+    /// Model input in pixels (w × h), 4:3; `ModelInput` letterboxes other aspects so `.scaleFill` doesn't distort.
+    private let inputSize = ModelInput.size
 
     var hasObjectModel: Bool { objectRequest != nil }
 
@@ -49,25 +49,26 @@ final class YOLOPerception {
     /// People with skeletons, in captured-image coordinates. Weak boxes (down to 0.15) are kept: the tracker
     /// only lets them extend existing tracks. Each box is trimmed to the keypoints that can be seen, so a person
     /// behind a desk doesn't get a box over the desk.
-    func people(in buffer: CVPixelBuffer, orientation: VisionOrientation) -> [RawDetection] {
-        let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation == .down ? .down : .up, options: [:])
+    func people(in input: ModelInput.Prepared, orientation: VisionOrientation) -> [RawDetection] {
+        let handler = VNImageRequestHandler(cvPixelBuffer: input.buffer, orientation: orientation == .down ? .down : .up, options: [:])
         guard (try? handler.perform([poseRequest])) != nil,
               let array = (poseRequest.results?.first as? VNCoreMLFeatureValueObservation)?.featureValue.multiArrayValue
         else { return [] }
         let (values, shape) = Self.floats(array)
         return YOLO.decodePose(values, shape: shape, inputSize: inputSize, boxThreshold: 0.15, keypointThreshold: 0.35).map { c in
-            RawDetection(box: VisionMapping.topLeftRect(PersonBox.visible(c.box, joints: c.joints), orientation: orientation),
+            RawDetection(box: input.letterbox.toImage(VisionMapping.topLeftRect(PersonBox.visible(c.box, joints: c.joints),
+                                                                               orientation: orientation)),
                          kind: .person,
                          confidence: c.confidence,
-                         joints: c.joints.mapValues { VisionMapping.topLeftPoint($0, orientation: orientation) })
+                         joints: c.joints.mapValues { input.letterbox.toImage(VisionMapping.topLeftPoint($0, orientation: orientation)) })
         }
     }
 
     /// Animals (tracked like people) and people (the plain detector finds half-hidden people the pose model
     /// misses), in captured-image coordinates.
-    func things(in buffer: CVPixelBuffer, orientation: VisionOrientation) -> (animals: [RawDetection], people: [RawDetection]) {
+    func things(in input: ModelInput.Prepared, orientation: VisionOrientation) -> (animals: [RawDetection], people: [RawDetection]) {
         guard let objectRequest else { return ([], []) }
-        let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation == .down ? .down : .up, options: [:])
+        let handler = VNImageRequestHandler(cvPixelBuffer: input.buffer, orientation: orientation == .down ? .down : .up, options: [:])
         guard (try? handler.perform([objectRequest])) != nil,
               let observations = objectRequest.results as? [VNRecognizedObjectObservation]
         else { return ([], []) }
@@ -76,8 +77,8 @@ final class YOLOPerception {
         for observation in observations {
             guard let top = observation.labels.first else { continue }
             let b = observation.boundingBox
-            let box = VisionMapping.rect(Rect(x: Float(b.minX), y: Float(b.minY), width: Float(b.width), height: Float(b.height)),
-                                         orientation: orientation)
+            let box = input.letterbox.toImage(VisionMapping.rect(Rect(x: Float(b.minX), y: Float(b.minY), width: Float(b.width),
+                                                                      height: Float(b.height)), orientation: orientation))
             switch COCOClass(label: top.identifier) {
             case let .animal(kind):
                 animals.append(RawDetection(box: box, kind: .animal(kind), confidence: top.confidence))

@@ -24,6 +24,8 @@ final class UltraWideCamera: NSObject, @unchecked Sendable {
         return queue
     }()
     private var configured = false
+    /// The format applied last (4K 30 or 1920×1440 60), so a restart only reconfigures on a change.
+    private var appliedHighRes: Bool?
 
     // Guarded by `lock`.
     private let lock = NSLock()
@@ -46,13 +48,18 @@ final class UltraWideCamera: NSObject, @unchecked Sendable {
         lock.withLock { latest }
     }
 
-    /// `completion` gets an error message, or nil once the camera runs. Called on a background queue.
-    func start(completion: @escaping @Sendable (String?) -> Void) {
+    /// `highRes` picks 4K at 30 fps instead of 1920×1440 at 60. `completion` gets an error message, or nil once
+    /// the camera runs. Called on a background queue.
+    func start(highRes: Bool, completion: @escaping @Sendable (String?) -> Void) {
         queue.async { [self] in
             do {
                 if !configured {
                     try configure()
                     configured = true
+                }
+                if appliedHighRes != highRes {
+                    try applyFormat(highRes: highRes)
+                    appliedHighRes = highRes
                 }
                 lock.withLock {
                     rotations = TimedHistory(keep: 0.5)
@@ -98,23 +105,10 @@ final class UltraWideCamera: NSObject, @unchecked Sendable {
         session.addOutput(output)
 
         try device.lockForConfiguration()
-        if let format = Self.bestFormat(device) {
-            device.activeFormat = format
-            let fps = format.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 30
-            let duration = CMTime(value: 1, timescale: CMTimeScale(min(fps, 60)))
-            device.activeVideoMinFrameDuration = duration
-            device.activeVideoMaxFrameDuration = duration
-        }
-        device.activeMaxExposureDuration = MotionBlur.cap(for: device.activeFormat)
         // Straight lines stay straight, so the pinhole maths (and the boxes) line up with the picture.
         if device.isGeometricDistortionCorrectionSupported { device.isGeometricDistortionCorrectionEnabled = true }
         if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
         device.unlockForConfiguration()
-
-        let format = device.activeFormat
-        let fov = device.isGeometricDistortionCorrectionEnabled ? format.geometricDistortionCorrectedVideoFieldOfView
-                                                                : format.videoFieldOfView
-        lock.withLock { fieldOfView = fov > 0 ? fov : 108 }
 
         if let connection = output.connection(with: .video) {
             // The sensor's own landscape orientation, the same as ARKit's captured image.
@@ -125,16 +119,38 @@ final class UltraWideCamera: NSObject, @unchecked Sendable {
         }
     }
 
-    /// 4:3 like ARKit's image (the models take 640×480), 60 fps, at most 1920 wide: the largest such format.
-    private static func bestFormat(_ device: AVCaptureDevice) -> AVCaptureDevice.Format? {
+    /// Switches between 4K 30 fps and 1920×1440 60 fps (falling back to what the camera has).
+    private func applyFormat(highRes: Bool) throws {
+        guard let device = Self.device else { return }
+        let fps: Double = highRes ? 30 : 60
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+        try device.lockForConfiguration()
+        defer { device.unlockForConfiguration() }
+        if let format = Self.bestFormat(device, maxWidth: highRes ? 4096 : 1920, fps: fps) {
+            device.activeFormat = format
+            let top = format.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? fps
+            let duration = CMTime(value: 1, timescale: CMTimeScale(min(top, fps)))
+            device.activeVideoMinFrameDuration = duration
+            device.activeVideoMaxFrameDuration = duration
+        }
+        device.activeMaxExposureDuration = MotionBlur.cap(for: device.activeFormat)
+        let format = device.activeFormat
+        let fov = device.isGeometricDistortionCorrectionEnabled ? format.geometricDistortionCorrectedVideoFieldOfView
+                                                                : format.videoFieldOfView
+        lock.withLock { fieldOfView = fov > 0 ? fov : 108 }
+    }
+
+    /// 4:3 like the models' input, up to `maxWidth`, reaching `fps` if any can: the largest such format.
+    private static func bestFormat(_ device: AVCaptureDevice, maxWidth: Int32, fps: Double) -> AVCaptureDevice.Format? {
         func size(_ f: AVCaptureDevice.Format) -> CMVideoDimensions { CMVideoFormatDescriptionGetDimensions(f.formatDescription) }
         let fourThree = device.formats.filter { f in
             let d = size(f)
             return CMFormatDescriptionGetMediaSubType(f.formatDescription) == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-                && d.width <= 1920 && abs(Double(d.width) / Double(d.height) - 4.0 / 3) < 0.01
+                && d.width <= maxWidth && abs(Double(d.width) / Double(d.height) - 4.0 / 3) < 0.01
         }
-        let sixty = fourThree.filter { f in f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 60 } }
-        return (sixty.isEmpty ? fourThree : sixty).max { size($0).width < size($1).width }
+        let fastEnough = fourThree.filter { f in f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= fps } }
+        return (fastEnough.isEmpty ? fourThree : fastEnough).max { size($0).width < size($1).width }
     }
 
     private func startMotion() {

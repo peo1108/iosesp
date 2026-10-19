@@ -5,13 +5,13 @@ import Testing
 @Test func defaultIsBareCamera() {
     let s = Settings.default
     for flag in Settings.visibilityToggles { #expect(!s[keyPath: flag]) }
-    #expect(s.lens == .wide && s.boxStyle == .corner && s.haptics)
+    #expect(s.lens == .wide && s.quality == .uhd30 && s.boxStyle == .corner && s.haptics)
     #expect(s.watermarkText == "ESP v3 · Undetected")
 }
 
 @Test func roundTripsThroughJSON() throws {
     var s = Settings.default
-    s.box = true; s.boxStyle = .glass; s.lens = .ultraWide; s.watermarkText = "xin chào"
+    s.box = true; s.boxStyle = .glass; s.lens = .ultraWide; s.quality = .hd60; s.watermarkText = "xin chào"
     let data = try JSONEncoder().encode(s)
     #expect(Settings.decodeOrDefault(data) == s)
 }

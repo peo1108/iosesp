@@ -27,6 +27,7 @@ final class CaptureEngine: NSObject {
     private(set) var failure: String?
 
     @ObservationIgnored private var requestedLens: CameraLens = .wide
+    @ObservationIgnored private var quality: VideoQuality = .uhd30
     /// Bumped on every run/pause, so a slow ultra-wide stop can't start ARKit after the user switched again.
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -98,6 +99,13 @@ final class CaptureEngine: NSObject {
         if isRunning { run(reset: true) }
     }
 
+    /// 4K 30 or HD 60; takes effect right away when running, else on the next `start`.
+    func setQuality(_ quality: VideoQuality) {
+        guard quality != self.quality else { return }
+        self.quality = quality
+        if isRunning { run(reset: true) }
+    }
+
     /// Retry after a failure (the error card's button).
     func restart() {
         failure = nil
@@ -126,7 +134,7 @@ final class CaptureEngine: NSObject {
         switch lens {
         case .ultraWide:
             session.pause()
-            ultraWide.start { message in
+            ultraWide.start(highRes: quality == .uhd30) { message in
                 guard let message else { return }
                 Task { @MainActor [weak self] in
                     guard let self, self.generation == current else { return }
@@ -153,7 +161,9 @@ final class CaptureEngine: NSObject {
         }
         let config = ARWorldTrackingConfiguration()
         let sixty = ARWorldTrackingConfiguration.supportedVideoFormats.filter { $0.framesPerSecond == 60 }
-        if let best = sixty.max(by: { pixels($0) < pixels($1) }) {
+        if quality == .uhd30, let uhd = ARWorldTrackingConfiguration.recommendedVideoFormatFor4KResolution {
+            config.videoFormat = uhd   // 3840×2160, 30 fps
+        } else if let best = sixty.max(by: { pixels($0) < pixels($1) }) {
             config.videoFormat = best
         }
         // Per-frame depth, not the temporally smoothed one, which trails behind fast movers.
