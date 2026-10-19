@@ -56,7 +56,7 @@ HUD (SwiftUI): TimelineView(.animation) chiếu lại vị trí world bằng cam
 ### 3.2 Các khối
 
 Code chia làm 2 target:
-- **`ESPCore`**: framework Swift thuần, không import ARKit/Vision/UIKit, unit test được.
+- **`ESPCore`**: Swift package thuần (`Core/`), chỉ dùng stdlib (`SIMD2/3/4<Float>`) và Foundation, không import ARKit/Vision/UIKit/simd. Nhờ vậy `swift test` chạy được cả trong WSL Linux lẫn trên CI.
 - **`ESP`**: app chứa ARKit, Vision, SwiftUI.
 
 | Khối | Target | Trách nhiệm | Phụ thuộc |
@@ -85,7 +85,7 @@ Code chia làm 2 target:
 **Perception**
 - `VNDetectHumanRectanglesRequest` (`upperBodyOnly = false`) và `VNDetectHumanBodyPoseRequest` chạy cùng một `VNImageRequestHandler` mỗi lượt.
 - Ghép pose vào box: lấy bbox của các khớp có confidence > 0.3, chọn box có IoU lớn nhất.
-- `VNGeneratePersonInstanceMaskRequest` chạy 10Hz, chỉ khi bật Chams (tối đa 4 người).
+- `VNGeneratePersonSegmentationRequest` (`.balanced`, mask 8-bit) chạy 10Hz, chỉ khi bật Chams. Một mask chung cho mọi người (không giới hạn số người như instance mask).
 - Orientation truyền cho Vision lấy theo hướng giao diện: `.up` khi landscapeRight, `.down` khi landscapeLeft.
 - Không xử lý chồng lượt: frame mới đến khi lượt trước chưa xong thì bỏ frame đó.
 
@@ -208,13 +208,13 @@ Lần cài đầu dùng preset **OFF** (đúng chất troll). Cài đặt tự l
 | Lưu video lỗi / từ chối quyền Ảnh | Toast lỗi, giữ file tạm và cho thử lưu lại |
 
 ## 7. Build & phân phối
-- **XcodeGen** `project.yml` khai báo 3 target: `ESP` (app), `ESPCore` (framework), `ESPCoreTests` (Swift Testing). File `.xcodeproj` không commit.
+- **XcodeGen** `project.yml` khai báo target app `ESP`, phụ thuộc local package `Core` (ESPCore, link tĩnh). Test của ESPCore chạy bằng `swift test` trong `Core/`. File `.xcodeproj` không commit.
 - `Info.plist`: `NSCameraUsageDescription`, `NSMicrophoneUsageDescription`, `NSPhotoLibraryAddUsageDescription`, `UIRequiredDeviceCapabilities` = [`arkit`], chỉ màn hình ngang, `UIStatusBarHidden`, `UIRequiresFullScreen`.
 - Bundle ID `com.cam.espcamera` (esign sẽ ký lại), tên hiển thị **ESP**.
 - **GitHub Actions** `.github/workflows/build.yml`, chạy khi push hoặc bấm tay:
   1. Runner macOS có Xcode 26, chọn Xcode 26 bằng `xcode-select`
   2. `brew install xcodegen` → `xcodegen generate`
-  3. `xcodebuild test` cho `ESPCoreTests` trên iOS Simulator
+  3. `swift test` trong `Core/` (Swift Testing)
   4. `xcodebuild build -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO`
   5. Đóng gói `Payload/ESP.app` → `ESP.ipa`, upload làm artifact
 - Cài: tải `ESP.ipa` từ tab Actions → ký bằng esign → cài.
@@ -234,12 +234,12 @@ App/
   HUD/RootView.swift, CameraView.swift, ESPCanvas.swift, PlayerGlassViews.swift,
       RadarView.swift, FakeIslandView.swift, KillFeedView.swift, MenuPanel.swift,
       SplashView.swift, HintView.swift, WatermarkView.swift, ToastView.swift
-Core/   (ESPCore)
-  Models.swift, Tracker.swift, OneEuroFilter.swift, SpatialMath.swift,
-  GameEngine.swift, Aimbot.swift, NameGenerator.swift, Settings.swift, Preset.swift
-Tests/  (ESPCoreTests)
-  TrackerTests, OneEuroFilterTests, SpatialMathTests, GameEngineTests,
-  AimbotTests, NameGeneratorTests, PresetTests
+Core/   (Swift package ESPCore)
+  Package.swift
+  Sources/ESPCore/  Models.swift, Tracker.swift, OneEuroFilter.swift, SpatialMath.swift,
+                    GameEngine.swift, Aimbot.swift, NameGenerator.swift, Settings.swift, ...
+  Tests/ESPCoreTests/  TrackerTests, OneEuroFilterTests, SpatialMathTests, GameEngineTests,
+                       AimbotTests, NameGeneratorTests, SettingsTests, ...
 ```
 
 ## 9. Mốc triển khai
