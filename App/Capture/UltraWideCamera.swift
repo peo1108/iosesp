@@ -147,11 +147,11 @@ final class UltraWideCamera: NSObject, @unchecked Sendable {
                         Vec3(Float(m.m21), Float(m.m22), Float(m.m23)),
                         Vec3(Float(m.m31), Float(m.m32), Float(m.m33)))
             let gravity = Vec3(Float(sample.gravity.x), Float(sample.gravity.y), Float(sample.gravity.z))
-            lock.withLock {
+            self.lock.withLock {
                 // Settle the matrix's reading once, on the first sample that tells them apart.
-                if convention == nil { convention = MotionPose.convention(attitudeRows: rows, gravity: gravity) }
-                let rotation = MotionPose.cameraToWorld(attitudeRows: rows, convention: convention ?? .referenceToDevice)
-                rotations.insert(rotation, at: sample.timestamp)
+                if self.convention == nil { self.convention = MotionPose.convention(attitudeRows: rows, gravity: gravity) }
+                let rotation = MotionPose.cameraToWorld(attitudeRows: rows, convention: self.convention ?? .referenceToDevice)
+                self.rotations.insert(rotation, at: sample.timestamp)
             }
         }
     }
