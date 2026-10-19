@@ -1,5 +1,6 @@
 import CoreVideo
 import ESPCore
+import ImageIO
 import QuartzCore
 import Vision
 
@@ -27,9 +28,11 @@ final class PerceptionPipeline {
         (.leftKnee, .leftKnee), (.rightKnee, .rightKnee), (.leftAnkle, .leftAnkle), (.rightAnkle, .rightAnkle),
     ]
 
-    /// `mask` is a person-segmentation buffer (OneComponent8, captured-image orientation), produced at most
-    /// every 0.1 s and only when `wantMask` is set; nil otherwise.
-    func detect(in pixelBuffer: CVPixelBuffer, wantMask: Bool) -> (people: [RawDetection], mask: CVPixelBuffer?) {
+    /// People in captured-image coordinates (top-left origin) whatever `orientation` Vision ran in.
+    /// `mask` is a person-segmentation buffer in Vision's orientation, produced at most every 0.1 s and only
+    /// when `wantMask` is set; nil otherwise.
+    func detect(in pixelBuffer: CVPixelBuffer, orientation: VisionOrientation,
+                wantMask: Bool) -> (people: [RawDetection], mask: CVPixelBuffer?) {
         let now = CACurrentMediaTime()
         let maskDue = wantMask && now - lastMask >= 0.1
         var requests: [VNRequest] = [rectangles, pose]
@@ -38,7 +41,8 @@ final class PerceptionPipeline {
             lastMask = now
         }
 
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
+                                            orientation: orientation == .down ? .down : .up, options: [:])
         do {
             try handler.perform(requests)
         } catch {
@@ -46,13 +50,15 @@ final class PerceptionPipeline {
         }
 
         var people = (rectangles.results ?? []).map { observation in
-            RawDetection(box: Self.topLeft(observation.boundingBox), joints: [:])
+            let r = observation.boundingBox
+            let box = Rect(x: Float(r.minX), y: Float(r.minY), width: Float(r.width), height: Float(r.height))
+            return RawDetection(box: VisionMapping.rect(box, orientation: orientation), joints: [:])
         }
 
         // Give each skeleton to the box that contains most of its joints.
         var bestShare = [Float](repeating: 0, count: people.count)
         for observation in pose.results ?? [] {
-            let joints = Self.joints(of: observation)
+            let joints = Self.joints(of: observation, orientation: orientation)
             guard joints.count >= 4 else { continue }
             var best: (index: Int, share: Float)?
             for (i, person) in people.enumerated() {
@@ -70,19 +76,14 @@ final class PerceptionPipeline {
         return (people, mask)
     }
 
-    private static func joints(of observation: VNHumanBodyPoseObservation) -> [Joint: Vec2] {
+    private static func joints(of observation: VNHumanBodyPoseObservation, orientation: VisionOrientation) -> [Joint: Vec2] {
         guard let points = try? observation.recognizedPoints(.all) else { return [:] }
         var joints: [Joint: Vec2] = [:]
         for (joint, name) in jointNames {
             if let p = points[name], p.confidence >= 0.3 {
-                joints[joint] = Vec2(Float(p.location.x), Float(1 - p.location.y))
+                joints[joint] = VisionMapping.point(Vec2(Float(p.location.x), Float(p.location.y)), orientation: orientation)
             }
         }
         return joints
-    }
-
-    /// Vision rects are bottom-left based.
-    private static func topLeft(_ r: CGRect) -> Rect {
-        Rect(x: Float(r.minX), y: Float(1 - r.minY - r.height), width: Float(r.width), height: Float(r.height))
     }
 }

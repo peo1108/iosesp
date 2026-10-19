@@ -43,8 +43,9 @@ struct SpatialResolver {
 
         let yaw: Float
         if let l = person.joints[.leftShoulder], let r = person.joints[.rightShoulder] {
-            let dl = depth?.median(over: Rect(x: l.x - 0.01, y: l.y - 0.01, width: 0.02, height: 0.02), grid: 3) ?? d
-            let dr = depth?.median(over: Rect(x: r.x - 0.01, y: r.y - 0.01, width: 0.02, height: 0.02), grid: 3) ?? d
+            // Shoulder samples that land on the background fall back to the torso depth.
+            let dl = SpatialMath.trustedDepth(depth?.median(over: Rect(x: l.x - 0.01, y: l.y - 0.01, width: 0.02, height: 0.02), grid: 3), near: d)
+            let dr = SpatialMath.trustedDepth(depth?.median(over: Rect(x: r.x - 0.01, y: r.y - 0.01, width: 0.02, height: 0.02), grid: 3), near: d)
             yaw = SpatialMath.yaw(
                 leftShoulder: SpatialMath.unproject(pixel: pixel(l), depth: dl, intrinsics: k, cameraToWorld: cameraToWorld),
                 rightShoulder: SpatialMath.unproject(pixel: pixel(r), depth: dr, intrinsics: k, cameraToWorld: cameraToWorld))

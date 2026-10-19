@@ -10,6 +10,7 @@ final class AppModel {
     let settings = SettingsStore()
     let thermal = ThermalMonitor()
     let recorder = Recorder()
+    let orientation = OrientationModel()
     let pipeline: ESPPipeline
 
     init() {
@@ -48,7 +49,10 @@ struct ESPApp: App {
                 .preferredColorScheme(.dark)
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     switch phase {
-                    case .active: model.capture.start()
+                    case .active:
+                        model.orientation.attach()
+                        model.capture.start()
+                        Task { await model.recorder.savePendingIfAllowed() }
                     case .background:
                         model.recorder.stopForBackground()
                         model.capture.pause()
@@ -61,6 +65,9 @@ struct ESPApp: App {
                 }
                 .onChange(of: model.settings.settings, initial: true) { model.applyBudget() }
                 .onChange(of: model.budget) { model.applyBudget() }
+                .onChange(of: model.orientation.interfaceOrientation, initial: true) {
+                    model.pipeline.visionOrientation = model.orientation.visionOrientation
+                }
         }
     }
 }

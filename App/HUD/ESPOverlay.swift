@@ -42,7 +42,7 @@ struct ESPOverlay: View {
                 ChamsView(mask: store.chamsMask, mapper: frame.layout?.mapper, accent: accent, time: time)
             }
             ESPCanvas(layouts: frame.players,
-                      options: .init(box: settings.box, boxStyle: store.trackingNormal ? settings.boxStyle : .full,
+                      options: .init(box: settings.box, boxStyle: settings.boxStyle.effective(trackingNormal: store.trackingNormal),
                                      skeleton: settings.skeleton, headDot: settings.headDot, snaplines: settings.snaplines))
             PlayerGlassViews(layouts: frame.players,
                              options: .init(name: settings.name, distance: settings.distance, health: settings.health))

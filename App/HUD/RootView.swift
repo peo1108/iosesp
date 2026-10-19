@@ -82,8 +82,8 @@ struct RootView: View {
         }
         .task(id: toast?.id) {
             guard let current = toast else { return }
-            if case .failed(_, true) = current.kind {
-                try? await Task.sleep(for: .seconds(5))
+            if case .failed(_, .some) = current.kind {
+                try? await Task.sleep(for: .seconds(6))
             } else {
                 try? await Task.sleep(for: .seconds(2.5))
             }
@@ -95,7 +95,8 @@ struct RootView: View {
 
     @ViewBuilder
     private var recordingControls: some View {
-        let islandLeading = InterfaceOrientation.islandOnLeading
+        // Observable, so the button moves to the thumb side when the phone turns 180°.
+        let islandLeading = model.orientation.islandOnLeading
         if settings.recordButton {
             RecordButton(isRecording: recorder.isRecording, action: toggleRecording)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: islandLeading ? .trailing : .leading)

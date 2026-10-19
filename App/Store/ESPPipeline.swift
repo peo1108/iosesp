@@ -12,11 +12,13 @@ final class ESPPipeline: @unchecked Sendable {
     private let ciContext = CIContext(options: [.cacheIntermediates: false])
     private let store: ESPStore
 
+    // Guarded by `lock`.
     private let lock = NSLock()
     private var busy = false
-    private var lastRun: TimeInterval = 0
+    private var gate = FrameGate()
     private var _targetHz: Double = 30
     private var _wantMask = true
+    private var _visionOrientation: VisionOrientation = .up
 
     var targetHz: Double {
         get { lock.withLock { _targetHz } }
@@ -29,22 +31,30 @@ final class ESPPipeline: @unchecked Sendable {
         set { lock.withLock { _wantMask = newValue } }
     }
 
+    /// Follows the interface orientation so Vision always sees people upright.
+    var visionOrientation: VisionOrientation {
+        get { lock.withLock { _visionOrientation } }
+        set { lock.withLock { _visionOrientation = newValue } }
+    }
+
     @MainActor
     init(capture: CaptureEngine, store: ESPStore) {
         self.store = store
         capture.frameHandler = { [weak self] frame in self?.offer(frame) }
     }
 
-    /// Clears tracks, e.g. after an interruption.
+    /// Clears tracks and everything on screen, e.g. after an interruption or going to the background.
     func reset() {
-        processingQueue.async { [tracker] in tracker.reset() }
+        processingQueue.async { [tracker, store] in
+            tracker.reset()
+            Task { @MainActor in store.clear() }
+        }
     }
 
     private func offer(_ frame: ARFrame) {
         let accept: Bool = lock.withLock {
-            guard !busy, frame.timestamp - lastRun >= 1 / _targetHz else { return false }
+            guard !busy, gate.shouldRun(at: frame.timestamp, hz: _targetHz) else { return false }
             busy = true
-            lastRun = frame.timestamp
             return true
         }
         guard accept else { return }
@@ -64,16 +74,17 @@ final class ESPPipeline: @unchecked Sendable {
         case .limited: trackingNormal = false
         }
 
-        let wantMask = self.wantMask
-        let found = perception.detect(in: frame.capturedImage, wantMask: wantMask)
+        let (wantMask, orientation) = lock.withLock { (_wantMask, _visionOrientation) }
+        let found = perception.detect(in: frame.capturedImage, orientation: orientation, wantMask: wantMask)
         let detections = resolver.resolve(found.people, frame: frame)
         let tracks = tracker.update(detections, at: frame.timestamp)
         let hasDepth = frame.smoothedSceneDepth != nil || frame.sceneDepth != nil
         let camera = frame.camera
-        let mask = found.mask.flatMap(maskImage)
+        let timestamp = frame.timestamp
+        let mask = found.mask.flatMap { maskImage($0, orientation: orientation) }
 
         Task { @MainActor [store] in
-            store.publish(tracks, camera: camera, trackingNormal: trackingNormal, hasDepth: hasDepth)
+            store.publish(tracks, camera: camera, at: timestamp, trackingNormal: trackingNormal, hasDepth: hasDepth)
             if let mask {
                 store.chamsMask = mask
             } else if !wantMask {
@@ -82,9 +93,12 @@ final class ESPPipeline: @unchecked Sendable {
         }
     }
 
-    /// Grayscale person mask → white image whose alpha is the mask, ready to clip a gradient.
-    private func maskImage(_ buffer: CVPixelBuffer) -> CGImage? {
-        let alpha = CIImage(cvPixelBuffer: buffer).applyingFilter("CIMaskToAlpha")
+    /// Grayscale person mask → white image whose alpha is the mask, in captured-image orientation,
+    /// ready to clip a gradient.
+    private func maskImage(_ buffer: CVPixelBuffer, orientation: VisionOrientation) -> CGImage? {
+        var mask = CIImage(cvPixelBuffer: buffer)
+        if orientation == .down { mask = mask.oriented(.down) }
+        let alpha = mask.applyingFilter("CIMaskToAlpha")
         return ciContext.createCGImage(alpha, from: alpha.extent)
     }
 }

@@ -25,8 +25,9 @@ struct EliminationFX: Identifiable {
 @MainActor @Observable
 final class ESPStore {
     var tracks: [Track] = []
-    /// Camera of the frame `tracks` were detected in, for re-projecting them to the current frame.
-    @ObservationIgnored var detectionCamera: ARCamera?
+    /// Cameras of recent detection frames by timestamp, for re-projecting each track from the frame it was
+    /// last seen in to the current frame.
+    @ObservationIgnored private var cameras = TimedHistory<ARCamera>(keep: 1.2)
     /// Perception results per second (smoothed).
     var fps: Double = 0
     var trackingNormal = true
@@ -68,14 +69,25 @@ final class ESPStore {
         return identity
     }
 
-    func publish(_ tracks: [Track], camera: ARCamera, trackingNormal: Bool, hasDepth: Bool) {
+    /// The camera of the detection frame at `timestamp` (a track's `lastSeen`).
+    func camera(at timestamp: TimeInterval) -> ARCamera? {
+        cameras.value(at: timestamp)
+    }
+
+    func clear() {
+        tracks = []
+        chamsMask = nil
+        cameras = TimedHistory(keep: 1.2)
+    }
+
+    func publish(_ tracks: [Track], camera: ARCamera, at timestamp: TimeInterval, trackingNormal: Bool, hasDepth: Bool) {
         let now = Date()
         if let last = lastPublish {
             let instant = 1 / max(now.timeIntervalSince(last), 0.001)
             fps = fps == 0 ? instant : fps * 0.9 + instant * 0.1
         }
         lastPublish = now
-        detectionCamera = camera
+        cameras.insert(camera, at: timestamp)
         self.tracks = tracks
         self.trackingNormal = trackingNormal
         self.hasDepth = hasDepth

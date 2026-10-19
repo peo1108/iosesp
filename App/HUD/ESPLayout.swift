@@ -96,13 +96,12 @@ enum ESPLayout {
     static func compute(store: ESPStore, frame: ARFrame, viewSize: CGSize, lockedID: Int?) -> ESPFrameLayout {
         let orientation = InterfaceOrientation.current
         let now = ScreenMapper(frame: frame, viewSize: viewSize, orientation: orientation)
-        let then = store.detectionCamera
-
         // Eliminated players vanish until they respawn.
         let players = store.confirmed.filter { !store.isEliminated($0.id) }.prefix(8).map { track in
             var thenAnchor = CGPoint.zero, nowAnchor = CGPoint.zero, scale: CGFloat = 1
             var anchored = false
-            if store.trackingNormal, let world = track.worldPosition, let then,
+            // The camera of the frame this track was last detected in (not just the latest frame).
+            if store.trackingNormal, let world = track.worldPosition, let then = store.camera(at: track.lastSeen),
                let p0 = now.point(world: world, camera: then), let p1 = now.point(world: world) {
                 thenAnchor = p0
                 nowAnchor = p1
