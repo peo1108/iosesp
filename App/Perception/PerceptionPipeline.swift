@@ -57,7 +57,8 @@ final class PerceptionPipeline {
             let r = observation.boundingBox
             let box = Rect(x: Float(r.minX), y: Float(r.minY), width: Float(r.width), height: Float(r.height))
             return RawDetection(box: VisionMapping.rect(box, orientation: orientation), kind: .person,
-                                confidence: observation.confidence)
+                                // Vision's scores run low; keep fallback people above the tracker's "start" bar.
+                                confidence: max(observation.confidence, 0.5))
         }
 
         // Give each skeleton to the box that contains most of its joints.

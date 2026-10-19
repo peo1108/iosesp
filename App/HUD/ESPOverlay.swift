@@ -67,7 +67,9 @@ struct ESPOverlay: View {
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 10) {
                 if settings.stats {
-                    StatsView(fps: store.fps, summary: store.countSummary, isEmpty: store.confirmed.isEmpty,
+                    StatsView(fps: store.fps,
+                              summary: store.countSummary(showAnimals: settings.showAnimals, maxDistance: Float(settings.maxDistance)),
+                              isEmpty: players.isEmpty,
                               trackingNormal: store.trackingNormal, heatWarning: budget.showHeatWarning, accent: accent)
                 }
                 if settings.radar, store.trackingNormal, let mapper = layout?.mapper {

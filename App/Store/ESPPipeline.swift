@@ -111,7 +111,9 @@ final class ESPPipeline: @unchecked Sendable {
             objects = things.objects
             animalsObserved = true
         } else if objectHz <= 0 {
+            // The animal model is off: let existing animal tracks age out instead of freezing on screen.
             objects = []
+            animalsObserved = true
         }
 
         let detections = resolver.resolve(raw, frame: frame)

@@ -84,12 +84,15 @@ final class ESPStore {
         trails = trails.filter { !$0.value.points(at: timestamp).isEmpty }
     }
 
-    /// People and animals as the HUD counter text.
-    var countSummary: String {
+    /// People and animals as the HUD counter text, with the same filters as the ESP on screen.
+    func countSummary(showAnimals: Bool, maxDistance: Float) -> String {
+        let inRange = confirmed.filter { $0.distance <= maxDistance }
         var animals: [AnimalKind: Int] = [:]
-        for track in confirmed {
-            if case let .animal(kind) = track.kind { animals[kind, default: 0] += 1 }
+        if showAnimals {
+            for track in inRange {
+                if case let .animal(kind) = track.kind { animals[kind, default: 0] += 1 }
+            }
         }
-        return CountSummary.text(people: confirmedPeople.count, animals: animals)
+        return CountSummary.text(people: inRange.filter { $0.kind.isPerson }.count, animals: animals)
     }
 }
