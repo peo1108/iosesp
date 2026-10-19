@@ -2,7 +2,8 @@ import CoreML
 import ESPCore
 import Vision
 
-/// People (YOLO11n-pose) and animals (YOLO11n) via CoreML on the Neural Engine.
+/// People (YOLO11n-pose, plus YOLO11n as a backup for half-hidden people) and animals (YOLO11n) via CoreML
+/// on the Neural Engine.
 /// Not thread-safe: call from one queue. `init` fails when the pose model is missing, fails to load or has an
 /// unexpected output; the object model is optional (no animals without it).
 final class YOLOPerception {
@@ -62,25 +63,31 @@ final class YOLOPerception {
         }
     }
 
-    /// Animals (tracked like people), in captured-image coordinates.
-    func animals(in buffer: CVPixelBuffer, orientation: VisionOrientation) -> [RawDetection] {
-        guard let objectRequest else { return [] }
+    /// Animals (tracked like people) and people (the plain detector finds half-hidden people the pose model
+    /// misses), in captured-image coordinates.
+    func things(in buffer: CVPixelBuffer, orientation: VisionOrientation) -> (animals: [RawDetection], people: [RawDetection]) {
+        guard let objectRequest else { return ([], []) }
         let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation == .down ? .down : .up, options: [:])
         guard (try? handler.perform([objectRequest])) != nil,
               let observations = objectRequest.results as? [VNRecognizedObjectObservation]
-        else { return [] }
+        else { return ([], []) }
 
-        var animals: [RawDetection] = []
+        var animals: [RawDetection] = [], people: [RawDetection] = []
         for observation in observations {
             guard let top = observation.labels.first else { continue }
             let b = observation.boundingBox
             let box = VisionMapping.rect(Rect(x: Float(b.minX), y: Float(b.minY), width: Float(b.width), height: Float(b.height)),
                                          orientation: orientation)
-            if case let .animal(kind) = COCOClass(label: top.identifier) {
+            switch COCOClass(label: top.identifier) {
+            case let .animal(kind):
                 animals.append(RawDetection(box: box, kind: .animal(kind), confidence: top.confidence))
+            case .person:
+                people.append(RawDetection(box: box, kind: .person, confidence: top.confidence))
+            case .other:
+                break
             }
         }
-        return animals
+        return (animals, people)
     }
 
     /// Copies a 3-D multi-array (Float16/Float32/Double, any strides) into a C-ordered Float array.

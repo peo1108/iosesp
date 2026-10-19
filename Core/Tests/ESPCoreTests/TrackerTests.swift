@@ -128,11 +128,29 @@ private func scored(_ x: Float, _ confidence: Float) -> Detection {
     #expect(r.count == 1 && r[0].id == 1 && r[0].state == .confirmed)
 }
 
-@Test func lowConfidenceNeverStartsTrack() {
+@Test func middlingConfidenceNeedsMoreHits() {
+    // A half-hidden person scoring 0.3: no box after 6 hits, a box after 8.
     let t = Tracker()
     var r: [Track] = []
-    for i in 0..<6 { r = t.update([scored(0.2, 0.3)], at: Double(i) / 30) }
+    for i in 0..<6 { r = t.update([scored(0.2, 0.3)], at: Double(i) / 60) }
     #expect(r.isEmpty)
+    for i in 6..<8 { r = t.update([scored(0.2, 0.3)], at: Double(i) / 60) }
+    #expect(r.count == 1 && r[0].state == .confirmed)
+}
+
+@Test func veryWeakDetectionsNeverStartTracks() {
+    let t = Tracker()
+    var r: [Track] = []
+    for i in 0..<30 { r = t.update([scored(0.2, 0.2)], at: Double(i) / 60) }
+    #expect(r.isEmpty)
+}
+
+@Test func aConfidentHitSpeedsUpASlowTrack() {
+    let t = Tracker()
+    t.update([scored(0.2, 0.3)], at: 0)
+    t.update([scored(0.2, 0.6)], at: 1.0 / 60)
+    let r = t.update([scored(0.2, 0.3)], at: 2.0 / 60)
+    #expect(r.count == 1 && r[0].state == .confirmed)
 }
 
 @Test func veryLowConfidenceIsIgnored() {

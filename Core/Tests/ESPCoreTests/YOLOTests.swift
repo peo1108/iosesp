@@ -134,3 +134,15 @@ private let loose = Rect(x: 0.33, y: 0.12, width: 0.34, height: 0.84)
     let r = PersonBox.visible(tight, joints: skeleton())
     #expect(r.x >= tight.x - 1e-6 && r.maxY <= tight.maxY + 1e-6 && r.width <= tight.width + 1e-6)
 }
+
+// MARK: Person fusion
+
+@Test func backupPeopleOnlyFillGaps() {
+    let pose = [Rect(x: 0.1, y: 0.2, width: 0.2, height: 0.5)]
+    let backups = [
+        Rect(x: 0.08, y: 0.15, width: 0.25, height: 0.8),   // same person, full-body box: covered
+        Rect(x: 0.6, y: 0.3, width: 0.15, height: 0.4),     // someone the pose model missed
+    ]
+    #expect(PersonFusion.uncovered(backups, by: pose) == [1])
+    #expect(PersonFusion.uncovered(backups, by: []) == [0, 1])
+}

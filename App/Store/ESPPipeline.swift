@@ -2,8 +2,8 @@ import ESPCore
 import Foundation
 
 /// Capture → Perception → Spatial → Tracker → Store. Heavy work runs on `processingQueue`;
-/// frames that arrive while it is busy, or faster than `poseHz`, are dropped. The animal model runs on its own
-/// slower gate (`objectHz`) inside the same pass, and only while animals are shown.
+/// frames that arrive while it is busy, or faster than `poseHz`, are dropped. The plain detector (animals, and
+/// backup people for those half hidden) runs on its own slower gate (`objectHz`) inside the same pass.
 final class ESPPipeline: @unchecked Sendable {
     /// YOLO when the compiled models are bundled; otherwise people come from Vision. Loaded lazily on the
     /// processing queue: the first Neural Engine load can take seconds and must not block launch.
@@ -28,6 +28,7 @@ final class ESPPipeline: @unchecked Sendable {
     private var poseGate = FrameGate()
     private var _poseHz: Double = 60
     private var _objectHz: Double = 30
+    private var _wantAnimals = false
     private var _visionOrientation: VisionOrientation = .up
 
     var poseHz: Double {
@@ -35,10 +36,16 @@ final class ESPPipeline: @unchecked Sendable {
         set { lock.withLock { _poseHz = newValue } }
     }
 
-    /// 0 turns the animal model off.
+    /// 0 turns the plain detector off.
     var objectHz: Double {
         get { lock.withLock { _objectHz } }
         set { lock.withLock { _objectHz = newValue } }
+    }
+
+    /// Animals become tracks only when shown.
+    var wantAnimals: Bool {
+        get { lock.withLock { _wantAnimals } }
+        set { lock.withLock { _wantAnimals = newValue } }
     }
 
     /// Follows the interface orientation so the models always see people upright.
@@ -77,7 +84,7 @@ final class ESPPipeline: @unchecked Sendable {
 
     private func process(_ frame: CameraFrame) {
         if frame.tracking == .unavailable { tracker.reset() }
-        let (orientation, objectHz) = lock.withLock { (_visionOrientation, _objectHz) }
+        let (orientation, objectHz, wantAnimals) = lock.withLock { (_visionOrientation, _objectHz, _wantAnimals) }
         let image = frame.image
 
         // People: YOLO-pose, or Vision as a fallback.
@@ -88,13 +95,15 @@ final class ESPPipeline: @unchecked Sendable {
             raw = vision.detect(in: image, orientation: orientation)
         }
 
-        // Animals on their own slower gate.
-        var animalsObserved = false
+        // Plain detector on its own slower gate: animals, and people the pose model missed (half hidden).
+        var animalsObserved = !wantAnimals   // animals off: let existing animal tracks age out
         if let yolo, objectHz > 0, objectGate.shouldRun(at: frame.timestamp, hz: objectHz) {
-            raw += yolo.animals(in: image, orientation: orientation)
+            let things = yolo.things(in: image, orientation: orientation)
+            if wantAnimals { raw += things.animals }
+            let posed = raw.filter { $0.kind.isPerson }.map(\.box)
+            raw += PersonFusion.uncovered(things.people.map(\.box), by: posed).map { things.people[$0] }
             animalsObserved = true
         } else if objectHz <= 0 {
-            // The animal model is off: let existing animal tracks age out instead of freezing on screen.
             animalsObserved = true
         }
 

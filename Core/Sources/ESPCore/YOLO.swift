@@ -74,6 +74,23 @@ public enum YOLO {
     }
 }
 
+/// Merging people from the plain detector (better with half-hidden people) into the pose model's.
+public enum PersonFusion {
+    /// Indices of `backups` not already covered by a box in `primary`: covered means over half of the smaller
+    /// box overlaps (the pose boxes are trimmed to the visible body, so plain IoU would undercount).
+    public static func uncovered(_ backups: [Rect], by primary: [Rect], overlap: Float = 0.5) -> [Int] {
+        backups.indices.filter { i in
+            let b = backups[i]
+            return !primary.contains { p in
+                let w = min(p.x + p.width, b.x + b.width) - max(p.x, b.x)
+                let h = min(p.maxY, b.maxY) - max(p.y, b.y)
+                guard w > 0, h > 0 else { return false }
+                return w * h / max(min(p.area, b.area), 1e-6) > overlap
+            }
+        }
+    }
+}
+
 /// Trims a person box to what can actually be seen. The detector draws the whole body it expects, so someone
 /// half behind a desk or a monitor gets a box over the furniture too; the confident keypoints say where the body
 /// really is. The result only ever shrinks the detector's box.

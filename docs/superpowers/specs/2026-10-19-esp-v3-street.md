@@ -111,3 +111,7 @@ ARKit world tracking chỉ dùng cam 1× (Apple xác nhận trên forum), nên 0
   - Thẻ và mũi tên thu nhỏ còn 0.72 lần khi ở xa.
   - Người xa được vẽ trước, người gần đè lên trên.
 - **Tia lite:** kẻ từ giữa mép trên xuống đỉnh box.
+- **Người bị che một nửa:**
+  - Phát hiện có độ tự tin 0.25–0.4 cũng tạo được track, nhưng phải khớp 8 lần mới hiện. Chỉ cần một lần khớp tự tin (≥ 0.4) là quay về mức 3 lần.
+  - YOLO11n thường (bắt người bị che tốt hơn model pose) chạy ở nửa tần số khi tắt con vật. Người nó thấy mà model pose bỏ sót (`PersonFusion.uncovered`, che phủ > 50%) được thêm vào.
+- **4 góc mảnh hơn:** nét box 0.8–1.6 pt, viền tối và viền sáng mỏng lại.

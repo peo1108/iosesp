@@ -16,6 +16,10 @@ public struct TrackerConfig: Sendable {
     /// Image width / height, so centre distances are measured in square units.
     public var imageAspect: Float = 4.0 / 3.0
     public var confirmHits = 3
+    /// Half-hidden people score low. Detections from here up to `highConfidence` may also start a track, but it
+    /// must be matched `slowConfirmHits` times (~0.13 s at 60 Hz) before showing, unless a confident hit comes.
+    public var slowStartConfidence: Float = 0.25
+    public var slowConfirmHits = 8
     /// A new track may miss this long (a few 60 Hz frames) without starting over.
     public var tentativeGrace: TimeInterval = 0.1
     /// Unmatched confirmed tracks keep their (predicted) box this long, then disappear from screen.
@@ -31,6 +35,8 @@ public struct TrackerConfig: Sendable {
 /// matched by world position. A second Kalman filter on the feet position gives real-world velocity.
 public final class Tracker {
     private struct Entry {
+        /// Matched at least once by a confident detection: the normal `confirmHits` apply.
+        var strong = false
         var track: Track
         /// (cx, cy, w, h) in normalized image units.
         var boxKalman: KalmanCV<Vec4>
@@ -98,8 +104,11 @@ public final class Tracker {
         }
         entries = entries.indices.filter { !removed.contains($0) }.map { entries[$0] }
 
-        // 5. Only confident detections start tracks.
+        // 5. Confident detections start tracks; middling ones start slow-confirming ones.
         for d in freeHigh.sorted() {
+            entries.append(makeEntry(detections[d], at: time))
+        }
+        for d in freeLow.sorted() where detections[d].confidence >= config.slowStartConfidence {
             entries.append(makeEntry(detections[d], at: time))
         }
 
@@ -258,7 +267,9 @@ public final class Tracker {
         track.occlusion = d.occlusion
         track.hits += 1
         track.lastSeen = time
-        if track.state == .lost || (track.state == .tentative && track.hits >= config.confirmHits) {
+        if d.confidence >= config.highConfidence { entry.strong = true }
+        let needed = entry.strong ? config.confirmHits : config.slowConfirmHits
+        if track.state == .lost || (track.state == .tentative && track.hits >= needed) {
             track.state = .confirmed
         }
         entry.track = track

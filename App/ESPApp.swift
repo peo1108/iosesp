@@ -33,8 +33,10 @@ final class AppModel {
         let budget = budget
         // Idle at 10 Hz when nothing is shown, so a reveal is instant without heating the phone.
         pipeline.poseHz = needsPerception ? budget.poseHz : min(budget.poseHz, 10)
-        // The animal model only runs while animals are shown.
-        pipeline.objectHz = needsPerception && settings.settings.showAnimals ? budget.objectHz : 0
+        // The plain detector runs at full rate for animals, at half rate otherwise just to catch half-hidden people.
+        let showAnimals = settings.settings.showAnimals
+        pipeline.objectHz = needsPerception ? (showAnimals ? budget.objectHz : budget.objectHz / 2) : 0
+        pipeline.wantAnimals = showAnimals
     }
 
     /// Switches cameras; tracks from the old one mean nothing to the new one.
