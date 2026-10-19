@@ -4,11 +4,13 @@ public enum TrackState: Sendable {
     case tentative, confirmed, lost
 }
 
-/// A person followed across frames with a stable id and smoothed geometry.
+/// A person or animal followed across frames with a stable id and smoothed geometry.
 public struct Track: Identifiable, Sendable {
     public var id: Int
     public var state: TrackState
     public var box: Rect
+    public var kind: EntityKind
+    public var confidence: Float
     public var joints: [Joint: Vec2]
     public var worldPosition: Vec3?
     public var velocity: Vec3
@@ -20,12 +22,14 @@ public struct Track: Identifiable, Sendable {
     public var hits: Int
     public var lastSeen: TimeInterval
 
-    public init(id: Int, state: TrackState, box: Rect, joints: [Joint: Vec2], worldPosition: Vec3?,
-                velocity: Vec3, distance: Float, distanceIsEstimated: Bool, heightMeters: Float,
+    public init(id: Int, state: TrackState, box: Rect, kind: EntityKind, confidence: Float, joints: [Joint: Vec2],
+                worldPosition: Vec3?, velocity: Vec3, distance: Float, distanceIsEstimated: Bool, heightMeters: Float,
                 yaw: Float, occlusion: Occlusion, hits: Int, lastSeen: TimeInterval) {
         self.id = id
         self.state = state
         self.box = box
+        self.kind = kind
+        self.confidence = confidence
         self.joints = joints
         self.worldPosition = worldPosition
         self.velocity = velocity

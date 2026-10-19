@@ -1,9 +1,19 @@
 import Testing
 @testable import ESPCore
 
-private func det(_ x: Float, _ y: Float = 0.3, world: Vec3? = nil, distance: Float = 3) -> Detection {
-    Detection(box: Rect(x: x, y: y, width: 0.1, height: 0.4), joints: [:], worldPosition: world,
+private func det(_ x: Float, _ y: Float = 0.3, world: Vec3? = nil, distance: Float = 3,
+                 kind: EntityKind = .person) -> Detection {
+    Detection(box: Rect(x: x, y: y, width: 0.1, height: 0.4), kind: kind, confidence: 0.9, joints: [:], worldPosition: world,
               distance: distance, distanceIsEstimated: false, heightMeters: 1.7, yaw: 0, occlusion: .visible)
+}
+
+@Test func differentKindsNeverMatch() {
+    let t = Tracker()
+    for i in 0..<3 { t.update([det(0.2)], at: Double(i) / 30) }
+    for i in 3..<6 { t.update([det(0.2, kind: .animal(.dog))], at: Double(i) / 30) }
+    let r = t.update([det(0.2, kind: .animal(.dog))], at: 0.3)
+    #expect(r.contains { $0.kind == .animal(.dog) && $0.id != 1 })
+    #expect(!r.contains { $0.id == 1 && $0.kind != .person })
 }
 
 @Test func confirmsAfterThreeHits() {

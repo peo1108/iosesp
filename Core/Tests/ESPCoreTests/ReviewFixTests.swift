@@ -73,7 +73,7 @@ import Testing
 // MARK: 3D box stability (Important #6)
 
 private func det(yaw: Float, height: Float = 1.7) -> Detection {
-    Detection(box: Rect(x: 0.2, y: 0.3, width: 0.1, height: 0.4), joints: [:], worldPosition: Vec3(0, 0, -3),
+    Detection(box: Rect(x: 0.2, y: 0.3, width: 0.1, height: 0.4), kind: .person, confidence: 0.9, joints: [:], worldPosition: Vec3(0, 0, -3),
               distance: 3, distanceIsEstimated: false, heightMeters: height, yaw: yaw, occlusion: .visible)
 }
 

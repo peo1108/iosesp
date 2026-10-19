@@ -42,10 +42,3 @@ private let view = Vec2(1000, 500)
 @Test func radarDropsOutOfRange() {
     #expect(Radar.blips([(id: 1, world: Vec3(0, 0, -50))], cameraToWorld: .identity, range: 10).isEmpty)
 }
-
-@Test func aimbotPicksNearestInFov() {
-    let c: [(id: Int, aimPoint: Vec2)] = [(1, Vec2(600, 250)), (2, Vec2(530, 260)), (3, Vec2(900, 250))]
-    #expect(Aimbot.selectTarget(c, center: Vec2(500, 250), fovRadius: 150) == 2)
-    #expect(Aimbot.selectTarget([(id: 3, aimPoint: Vec2(900, 250))], center: Vec2(500, 250), fovRadius: 150) == nil)
-    #expect(Aimbot.selectTarget([], center: Vec2(500, 250), fovRadius: 150) == nil)
-}

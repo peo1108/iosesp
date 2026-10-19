@@ -44,7 +44,7 @@ public final class Tracker {
         // 1. Overlap in the image, best IoU first. Lost tracks only come back through world position.
         var overlaps: [(t: Int, d: Int, iou: Float)] = []
         for t in entries.indices where entries[t].track.state != .lost {
-            for d in detections.indices {
+            for d in detections.indices where detections[d].kind == entries[t].track.kind {
                 let iou = entries[t].track.box.iou(detections[d].box)
                 if iou >= config.iouThreshold { overlaps.append((t, d, iou)) }
             }
@@ -60,7 +60,7 @@ public final class Tracker {
         var nearby: [(t: Int, d: Int, distance: Float)] = []
         for t in freeTracks {
             guard let a = entries[t].track.worldPosition else { continue }
-            for d in freeDetections {
+            for d in freeDetections where detections[d].kind == entries[t].track.kind {
                 guard let b = detections[d].worldPosition else { continue }
                 let distance = length(a - b)
                 if distance < config.worldMatchDistance { nearby.append((t, d, distance)) }
@@ -104,7 +104,8 @@ public final class Tracker {
     }
 
     private func makeEntry(_ d: Detection, at time: TimeInterval) -> Entry {
-        let track = Track(id: nextID, state: .tentative, box: d.box, joints: [:], worldPosition: nil,
+        let track = Track(id: nextID, state: .tentative, box: d.box, kind: d.kind, confidence: d.confidence,
+                          joints: [:], worldPosition: nil,
                           velocity: .zero, distance: d.distance, distanceIsEstimated: d.distanceIsEstimated,
                           heightMeters: d.heightMeters, yaw: d.yaw, occlusion: d.occlusion, hits: 0, lastSeen: time)
         nextID += 1
@@ -145,6 +146,7 @@ public final class Tracker {
             track.worldPosition = smoothed
         }
 
+        track.confidence = d.confidence
         track.distance = d.distance
         track.distanceIsEstimated = d.distanceIsEstimated
         track.heightMeters = entry.heightFilter.filter(Vec2(d.heightMeters, 0), at: time).x
