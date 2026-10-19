@@ -80,9 +80,9 @@ struct ESPCanvas: View {
         let dash: [CGFloat] = dashed ? [6, 5] : []
         func style(_ w: CGFloat) -> StrokeStyle { StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round, dash: dash) }
         if glow > 0.05 {
-            context.stroke(path, with: .color(color.opacity(0.25 * glow)), style: style(width + 6 * glow))
+            context.stroke(path, with: .color(color.opacity(0.18 * glow)), style: style(width + 2.5 * glow))
         }
-        context.stroke(path, with: .color(.black.opacity(0.35 * opacity)), style: style(width + 2))
+        context.stroke(path, with: .color(.black.opacity(0.3 * opacity)), style: style(width + 1.2))
         context.stroke(path, with: .color(color.opacity(opacity)), style: style(width))
     }
 }

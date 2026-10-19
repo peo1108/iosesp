@@ -14,7 +14,7 @@ import Testing
 }
 
 @Test func farThingsAreThinnerFainterSmaller() {
-    #expect(DepthStyle.lineWidth(1) > DepthStyle.lineWidth(10) && DepthStyle.lineWidth(30) == 1)
+    #expect(DepthStyle.lineWidth(1) > DepthStyle.lineWidth(10) && DepthStyle.lineWidth(30) == 0.8 && DepthStyle.lineWidth(1) <= 1.6)
     #expect(DepthStyle.opacity(30) == 0.45 && DepthStyle.opacity(1) == 1)
     #expect(DepthStyle.cardScale(2) > DepthStyle.cardScale(12))
 }
