@@ -13,8 +13,7 @@ struct RootView: View {
             Color.black.ignoresSafeArea()
             CameraView(session: model.capture.session)
                 .ignoresSafeArea()
-            ESPOverlay(capture: model.capture, store: model.store, settings: settings,
-                       chamsAllowed: model.budget.chamsAllowed)
+            ESPOverlay(capture: model.capture, store: model.store, settings: settings, budget: model.budget)
 
             GestureLayer(onToggleMenu: toggleMenu, onToggleRecording: {}, onTap: handleTap)
                 .ignoresSafeArea()

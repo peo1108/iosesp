@@ -11,7 +11,7 @@ struct PlayerLayout: Identifiable {
     let id: Int
     let track: Track
     let identity: PlayerIdentity
-    let color: Color
+    var color: Color
     let hp: Float
     let rect: CGRect
     /// The 8 projected corners of the world-space box (0–3 bottom, 4–7 top), when every corner is in front.
@@ -57,6 +57,19 @@ struct PlayerLayout: Identifiable {
     /// Head position: the nose joint, else a point near the top of the box.
     var head: CGPoint {
         joint(.nose) ?? CGPoint(x: rect.midX, y: rect.minY + rect.height * 0.08)
+    }
+
+    /// Where the fake aimbot points: head, or between the shoulders for chest.
+    func aimPoint(_ target: AimTarget) -> CGPoint {
+        switch target {
+        case .head:
+            return head
+        case .chest:
+            if let l = joint(.leftShoulder), let r = joint(.rightShoulder) {
+                return CGPoint(x: (l.x + r.x) / 2, y: (l.y + r.y) / 2 + rect.height * 0.05)
+            }
+            return joint(.neck) ?? CGPoint(x: rect.midX, y: rect.minY + rect.height * 0.3)
+        }
     }
 
     private static func move(_ p: CGPoint, _ then: CGPoint, _ now: CGPoint, _ s: CGFloat) -> CGPoint {

@@ -73,8 +73,20 @@ struct ScreenMapper {
 }
 
 enum InterfaceOrientation {
+    @MainActor private static var scene: UIWindowScene? {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+    }
+
     @MainActor static var current: UIInterfaceOrientation {
-        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        return scene?.effectiveGeometry.interfaceOrientation ?? .landscapeRight
+        scene?.effectiveGeometry.interfaceOrientation ?? .landscapeRight
+    }
+
+    @MainActor static var safeAreaInsets: UIEdgeInsets {
+        scene?.keyWindow?.safeAreaInsets ?? UIEdgeInsets(top: 0, left: 59, bottom: 21, right: 59)
+    }
+
+    /// In landscapeRight the top of the phone (and its Dynamic Island) is on the left.
+    @MainActor static var islandOnLeading: Bool {
+        current != .landscapeLeft
     }
 }
