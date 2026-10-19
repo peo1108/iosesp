@@ -110,3 +110,34 @@ private func flipped(_ joints: [Joint: Vec2]) -> [Joint: Vec2] {
     let s = tracker.update(tracks: [track(1, standingSkeleton(), at: 10)], objects: [], orientation: .up, label: label, at: 10)
     #expect(s[1]?.firstSeen == 3)
 }
+
+// MARK: Riders
+
+@Test func riderPassingIsAnnouncedWithSpeed() {
+    let tracker = ActivityTracker()
+    var last: [Int: ActivityState] = [:]
+    for i in 0..<12 {
+        let t = Double(i) / 60
+        var rider = track(1, sittingSkeleton(), at: t)
+        rider.worldPosition = Vec3(Float(8 * t), 0, -6)
+        rider.velocity = Vec3(8, 0, 0)
+        last = tracker.update(tracks: [rider], objects: [], orientation: .up, label: label, at: t)
+    }
+    #expect(last[1]?.frame.motion == .riding && last[1]?.mainText == "Đi xe")
+    // The entry line became the riding line: one row, with the speed.
+    #expect(tracker.events.count == 1)
+    #expect(tracker.events.first?.text == "🛵 Người 01 phóng qua · 29 km/h")
+}
+
+@Test func riderIsAnnouncedOnce() {
+    let tracker = ActivityTracker()
+    for i in 0..<240 {
+        let t = Double(i) / 60
+        var rider = track(1, i.isMultiple(of: 7) ? standingSkeleton() : sittingSkeleton(), at: t)
+        rider.worldPosition = Vec3(Float(8 * t), 0, -6)
+        rider.velocity = Vec3(8, 0, 0)
+        _ = tracker.update(tracks: [rider], objects: [], orientation: .up, label: label, at: t)
+    }
+    #expect(tracker.events.filter { $0.text.contains("phóng qua") }.count <= 1)
+    #expect(!tracker.events.contains { $0.text.contains("ngồi") || $0.text.contains("đứng") || $0.text.contains("chạy") })
+}

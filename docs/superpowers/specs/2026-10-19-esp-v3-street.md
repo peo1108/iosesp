@@ -49,6 +49,28 @@ Tracker:
 
 Ngoài ra bỏ chams, skeleton và vệt chân cũng bớt tải. Khi con vật tắt thì không tạo track con vật.
 
+### Người đi xe, người di chuyển nhanh
+
+Không cần box xe, nhưng phải bắt được người ngồi trên xe đang phóng qua (người lái xe vẫn là lớp "người" của YOLO).
+
+- **Ghép track mới theo tâm:** người ở xa phóng nhanh có thể dịch quá một bề rộng box giữa hai khung, nhất là khi máy nóng chạy 20 Hz. Lúc đó hai box liên tiếp không chồng nhau, và ở khung thứ 2 Kalman chưa biết vận tốc.
+  - Track **mới** (tentative) được ghép thêm theo khoảng cách tâm dưới 1.2 lần chiều cao box, với điều kiện chiều cao hai box chênh nhau không quá 1.5 lần.
+  - Track đã xác nhận thì không dùng cách này, để không trao nhầm ID cho người đứng cạnh.
+  - Có test kèm test đối chứng: tắt cách ghép này đi thì người lái không bao giờ được xác nhận.
+- **Nhãn "🛵 Đi xe":** người đi xe ngồi, nên trước đây nhãn sẽ ra "Ngồi".
+  - Gán "Đi xe" khi tốc độ ngang ≥ 6.5 m/s (khoảng 23 km/h), hoặc khi đang ngồi và tốc độ ≥ 3.5 m/s.
+  - Nhãn này đứng ngay sau nhãn đồ vật, xếp trên cử chỉ và tư thế.
+  - Nhóm chuyển động chỉ giữ 0.2 s (trước 0.4 s), vì người phóng qua chỉ ở trong khung chưa tới 1 s.
+- **Sự kiện:** "🛵 Người 05 phóng qua · 32 km/h".
+  - Báo một lần cho mỗi track, không bị giới hạn 2 s giữa các sự kiện.
+  - Nếu dòng "vừa vào khung hình" còn mới thì sửa luôn dòng đó.
+  - Trong lúc đi xe, các sự kiện ngồi xuống, đứng dậy, bắt đầu chạy bị tắt (chân người lái làm tư thế nhảy liên tục).
+- **Ít nhoè hơn:** auto-exposure bị giới hạn tối đa 1/120 s trên cả hai camera.
+  - Cam 1× chỉnh qua `configurableCaptureDeviceForPrimaryCamera`, đặt ở khung đầu tiên sau khi chạy.
+  - Đổi lại, ảnh ban đêm tối và nhiễu hơn.
+- **Depth từng khung:** dùng `sceneDepth` thay cho `smoothedSceneDepth`, vì bản làm mượt theo thời gian bị trễ ở người di chuyển nhanh.
+- **Kalman world:** giữ nguyên. Mô phỏng người lái 8.3 m/s cho vận tốc đạt khoảng 7 m/s sau 6 khung (0.1 s) ở 60 Hz.
+
 ## 6. Cam góc siêu rộng (0.5×)
 
 ARKit world tracking chỉ dùng cam 1× (Apple xác nhận trên forum), nên 0.5× chạy riêng:

@@ -33,6 +33,8 @@ final class CaptureEngine: NSObject {
 
     @ObservationIgnored private nonisolated let handlerLock = NSLock()
     @ObservationIgnored private nonisolated(unsafe) var storedHandler: ((CameraFrame) -> Void)?
+    /// ARKit picks its camera format when the session starts; the exposure cap goes on at the first frame after.
+    @ObservationIgnored private nonisolated(unsafe) var exposureCapPending = false
 
     /// Called on `frameQueue` for every image.
     nonisolated var frameHandler: ((CameraFrame) -> Void)? {
@@ -154,11 +156,13 @@ final class CaptureEngine: NSObject {
         if let best = sixty.max(by: { pixels($0) < pixels($1) }) {
             config.videoFormat = best
         }
-        if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
-            config.frameSemantics.insert(.smoothedSceneDepth)
+        // Per-frame depth, not the temporally smoothed one, which trails behind fast movers.
+        if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+            config.frameSemantics.insert(.sceneDepth)
         }
         config.planeDetection = []
         session.run(config, options: reset ? [.resetTracking, .removeExistingAnchors] : [])
+        handlerLock.withLock { exposureCapPending = true }
     }
 
     private func pixels(_ format: ARConfiguration.VideoFormat) -> CGFloat {
@@ -168,6 +172,13 @@ final class CaptureEngine: NSObject {
 
 extension CaptureEngine: ARSessionDelegate {
     nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        let capExposure = handlerLock.withLock {
+            defer { exposureCapPending = false }
+            return exposureCapPending
+        }
+        if capExposure, let device = ARWorldTrackingConfiguration.configurableCaptureDeviceForPrimaryCamera {
+            MotionBlur.limit(device)
+        }
         frameHandler?(CameraFrame(frame))
     }
 

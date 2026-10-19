@@ -201,3 +201,17 @@ private func object(_ kind: ObjectKind, at p: Vec2, size: Float = 0.04) -> Detec
     let f = evaluate([.nose: Vec2(0.5, 0.2)], speed: 1)
     #expect(f.posture == .standing && f.motion == .walking)
 }
+
+// MARK: Riding
+
+@Test func ridingByMotion() {
+    #expect(ActivityRules.motion(speed: 7, posture: .standing) == .riding)          // faster than people run
+    #expect(ActivityRules.motion(speed: 4, posture: .sitting) == .riding)           // seated and moving: a bike
+    #expect(ActivityRules.motion(speed: 4, posture: .standing) == .running)
+    #expect(evaluate(sittingSkeleton(), speed: 5).motion == .riding)
+}
+
+@Test func ridingHeadlinesOverSitting() {
+    let f = ActivityFrame(posture: .sitting, motion: .riding, gesture: .raiseOne, facing: .side, objectAction: .none, carrying: [])
+    #expect(f.main.text == "Đi xe" && f.main.emoji == "🛵")
+}

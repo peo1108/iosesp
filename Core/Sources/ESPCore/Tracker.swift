@@ -9,6 +9,12 @@ public struct TrackerConfig: Sendable {
     public var highIoU: Float = 0.2
     public var lowIoU: Float = 0.5
     public var worldMatchDistance: Float = 0.6
+    /// New tracks also match a confident detection whose centre is within this many box heights, when the
+    /// boxes no longer overlap: a rider passing fast moves more than a box width between frames before the
+    /// Kalman filter knows the velocity (or when a hot phone runs at 20 Hz).
+    public var fastReach: Float = 1.2
+    /// Image width / height, so centre distances are measured in square units.
+    public var imageAspect: Float = 4.0 / 3.0
     public var confirmHits = 3
     /// A new track may miss this long (a few 60 Hz frames) without starting over.
     public var tentativeGrace: TimeInterval = 0.1
@@ -66,6 +72,9 @@ public final class Tracker {
         // Confirmed tracks pick first, so a tentative duplicate can't steal a person's detection (and id).
         matchByOverlap(Set(high), &freeHigh, &freeTracks, threshold: config.highIoU, detections, at: time, states: [.confirmed])
         matchByOverlap(Set(high), &freeHigh, &freeTracks, threshold: config.highIoU, detections, at: time, states: [.tentative])
+        // 1b. Fast movers whose new tracks don't overlap their next detection yet. Only tentative tracks, so a
+        // confirmed person missed for a frame can't hand their id to someone stepping out next to them.
+        matchFastNewTracks(&freeHigh, &freeTracks, detections, at: time)
         // 2. Weak detections only extend the tracks still unmatched, and need a tighter overlap.
         var freeLow = Set(low)
         matchByOverlap(Set(low), &freeLow, &freeTracks, threshold: config.lowIoU, detections, at: time, states: [.confirmed, .tentative])
@@ -114,6 +123,28 @@ public final class Tracker {
             }
         }
         for pair in pairs.sorted(by: { $0.iou > $1.iou })
+        where freeTracks.contains(pair.t) && freeDetections.contains(pair.d) {
+            absorb(detections[pair.d], into: &entries[pair.t], at: time)
+            freeTracks.remove(pair.t)
+            freeDetections.remove(pair.d)
+        }
+    }
+
+    private func matchFastNewTracks(_ freeDetections: inout Set<Int>, _ freeTracks: inout Set<Int>,
+                                    _ detections: [Detection], at time: TimeInterval) {
+        var pairs: [(t: Int, d: Int, reach: Float)] = []
+        for t in freeTracks where entries[t].track.state == .tentative {
+            let box = entries[t].predictedBox
+            for d in freeDetections where detections[d].kind == entries[t].track.kind {
+                let other = detections[d].box
+                let ratio = other.height / max(box.height, 0.001)
+                guard ratio > 0.67, ratio < 1.5 else { continue }
+                let delta = (other.center - box.center) * Vec2(config.imageAspect, 1)
+                let reach = delta.squareLength.squareRoot() / max(box.height, other.height)
+                if reach < config.fastReach { pairs.append((t, d, reach)) }
+            }
+        }
+        for pair in pairs.sorted(by: { $0.reach < $1.reach })
         where freeTracks.contains(pair.t) && freeDetections.contains(pair.d) {
             absorb(detections[pair.d], into: &entries[pair.t], at: time)
             freeTracks.remove(pair.t)

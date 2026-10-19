@@ -66,7 +66,8 @@ public final class ActivityTracker {
 
     private struct PersonState {
         var posture = Stabilizer<Posture>()
-        var motion = Stabilizer<Motion>()
+        /// Shorter hold: someone riding past is in view for well under a second.
+        var motion = Stabilizer<Motion>(hold: 0.2)
         var gesture = Stabilizer<GestureKind>()
         var facing = Stabilizer<Facing>()
         var action = Stabilizer<ObjectAction>()
@@ -86,6 +87,9 @@ public final class ActivityTracker {
         var firstSeen: TimeInterval
         var lastSeen: TimeInterval
         var lastEvent: TimeInterval
+        /// The "vừa vào khung hình" line, which a riding announcement replaces while it's fresh.
+        var entryEvent: Int?
+        var announcedRiding = false
         var person = PersonState()
     }
 
@@ -121,7 +125,7 @@ public final class ActivityTracker {
                 if case let .animal(animal) = track.kind {
                     log("\(animal.emoji) \(name) xuất hiện", at: time)
                 } else {
-                    log("\(name) vừa vào khung hình", at: time)
+                    known[track.id]?.entryEvent = log("\(name) vừa vào khung hình", at: time)
                 }
             }
             known[track.id]?.lastSeen = track.lastSeen
@@ -140,7 +144,11 @@ public final class ActivityTracker {
                                       facing: p.facing.update(raw.facing, at: time),
                                       objectAction: p.action.update(raw.objectAction, at: time),
                                       carrying: p.carrying.update(raw.carrying, at: time))
-            if let previous = p.last, let text = changeEvent(from: previous, to: frame), time - entry.lastEvent >= Self.eventGap {
+            let riding = frame.motion == .riding || [.cycling, .motorbiking].contains(frame.objectAction)
+            if riding && !entry.announcedRiding {
+                // Once per track and regardless of the event gap: a rider is gone before the gap runs out.
+                announceRiding(&entry, emoji: frame.main.emoji, speed: speed, at: time)
+            } else if let previous = p.last, let text = changeEvent(from: previous, to: frame), time - entry.lastEvent >= Self.eventGap {
                 log("\(entry.label) \(text)", at: time)
                 entry.lastEvent = time
             }
@@ -163,10 +171,25 @@ public final class ActivityTracker {
 
     // MARK: Private
 
-    private func log(_ text: String, at time: TimeInterval) {
-        events.append(ActivityEvent(id: nextEventID, text: text, time: time))
+    @discardableResult
+    private func log(_ text: String, at time: TimeInterval) -> Int {
+        let id = nextEventID
+        events.append(ActivityEvent(id: id, text: text, time: time))
         nextEventID += 1
         if events.count > Self.eventsShown { events.removeFirst(events.count - Self.eventsShown) }
+        return id
+    }
+
+    /// "🛵 Người 05 phóng qua · 32 km/h", in place of the entry line when that is still fresh.
+    private func announceRiding(_ entry: inout Known, emoji: String, speed: Float, at time: TimeInterval) {
+        let text = "\(emoji) \(entry.label) phóng qua · \(Readout.speed(speed))"
+        if let id = entry.entryEvent, let i = events.firstIndex(where: { $0.id == id }), time - events[i].time < Self.eventGap {
+            events[i] = ActivityEvent(id: id, text: text, time: time)
+        } else {
+            log(text, at: time)
+        }
+        entry.announcedRiding = true
+        entry.lastEvent = time
     }
 
     private func changeEvent(from old: ActivityFrame, to new: ActivityFrame) -> String? {
@@ -174,6 +197,8 @@ public final class ActivityTracker {
             if new.objectAction == .calling { return "đang gọi điện" }
             if new.objectAction == .usingPhone { return "cầm điện thoại lên" }
         }
+        // A rider's legs read as sitting, standing, sitting…: no posture or running news while on a vehicle.
+        if new.motion == .riding || old.motion == .riding { return nil }
         if new.posture != old.posture {
             switch new.posture {
             case .sitting: return "ngồi xuống"

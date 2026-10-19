@@ -188,3 +188,50 @@ private func scored(_ x: Float, _ confidence: Float) -> Detection {
     for i in 0..<30 { last = t.update([det(0.2, world: Vec3(Float(i) / 30, 0, -3))], at: Double(i) / 30) }
     #expect(last[0].speed > 0.5 && last[0].speed < 1.5)  // walking ~1 m/s, filtered
 }
+
+// MARK: Fast movers
+
+private func rider(_ x: Float, confidence: Float = 0.8) -> Detection {
+    Detection(box: Rect(x: x, y: 0.4, width: 0.05, height: 0.15), kind: .person, confidence: confidence, joints: [:],
+              worldPosition: nil, distance: 12, distanceIsEstimated: true, heightMeters: 1.7, yaw: 0, occlusion: .visible)
+}
+
+@Test func fastRiderConfirmsAndKeepsOneId() {
+    // A far rider moving more than a box width per frame on a hot phone (20 Hz): boxes never overlap.
+    let t = Tracker()
+    var r: [Track] = []
+    for i in 0..<12 { r = t.update([rider(0.05 + Float(i) * 0.06)], at: Double(i) / 20) }
+    #expect(r.count == 1 && r[0].id == 1 && r[0].state == .confirmed)
+    #expect(r[0].box.x > 0.65)
+}
+
+@Test func withoutFastMatchingTheRiderNeverConfirms() {
+    // The same rider with the fast stage off: every frame starts a new tentative track.
+    var config = TrackerConfig()
+    config.fastReach = 0
+    let t = Tracker(config: config)
+    var r: [Track] = []
+    for i in 0..<12 { r = t.update([rider(0.05 + Float(i) * 0.06)], at: Double(i) / 20) }
+    #expect(r.isEmpty)
+}
+
+@Test func confirmedTrackIsNotHandedToSomeoneNearby() {
+    let t = Tracker()
+    for i in 0..<3 { t.update([det(0.2)], at: Double(i) / 30) }
+    var r: [Track] = []
+    for i in 3..<6 { r = t.update([det(0.32)], at: Double(i) / 30) }   // person 1 hidden, someone new beside them
+    let newcomer = r.first { abs($0.box.x - 0.32) < 0.02 }
+    #expect(newcomer != nil && newcomer?.id != 1)
+    #expect(r.contains { $0.id == 1 && abs($0.box.x - 0.2) < 0.02 })
+}
+
+@Test func differentSizedBoxesDontCountAsTheSameFastMover() {
+    let t = Tracker()
+    t.update([rider(0.1)], at: 0)
+    var big = rider(0.18)
+    big.box.height = 0.4
+    t.update([big], at: 0.05)
+    t.update([big], at: 0.1)
+    let r = t.update([big], at: 0.15)
+    #expect(r.count == 1 && r[0].id == 2)
+}

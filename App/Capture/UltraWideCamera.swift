@@ -105,6 +105,7 @@ final class UltraWideCamera: NSObject, @unchecked Sendable {
             device.activeVideoMinFrameDuration = duration
             device.activeVideoMaxFrameDuration = duration
         }
+        device.activeMaxExposureDuration = MotionBlur.cap(for: device.activeFormat)
         // Straight lines stay straight, so the pinhole maths (and the boxes) line up with the picture.
         if device.isGeometricDistortionCorrectionSupported { device.isGeometricDistortionCorrectionEnabled = true }
         if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }

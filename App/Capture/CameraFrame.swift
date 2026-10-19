@@ -31,6 +31,6 @@ extension CameraFrame {
         case .limited: tracking = .limited
         case .notAvailable: tracking = .unavailable
         }
-        depth = frame.smoothedSceneDepth ?? frame.sceneDepth
+        depth = frame.sceneDepth ?? frame.smoothedSceneDepth
     }
 }

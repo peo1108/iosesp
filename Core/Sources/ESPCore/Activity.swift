@@ -4,9 +4,11 @@ import Foundation
 
 public enum Motion: String, Sendable, CaseIterable {
     case still, walking, running
+    /// On a bike or motorbike: faster than people run, or seated and moving.
+    case riding
 
-    public var emoji: String { ["🧍", "🚶", "🏃"][Self.allCases.firstIndex(of: self)!] }
-    public var text: String { ["Đứng yên", "Đi bộ", "Chạy"][Self.allCases.firstIndex(of: self)!] }
+    public var emoji: String { ["🧍", "🚶", "🏃", "🛵"][Self.allCases.firstIndex(of: self)!] }
+    public var text: String { ["Đứng yên", "Đi bộ", "Chạy", "Đi xe"][Self.allCases.firstIndex(of: self)!] }
 }
 
 public enum Posture: String, Sendable, CaseIterable {
@@ -70,9 +72,10 @@ public struct ActivityFrame: Equatable, Sendable {
         self.carrying = carrying
     }
 
-    /// The headline: object action, else gesture, else a non-standing posture, else motion.
+    /// The headline: object action, else riding, else gesture, else a non-standing posture, else motion.
     public var main: (emoji: String, text: String) {
         if objectAction != .none { return (objectAction.emoji, objectAction.text) }
+        if motion == .riding { return (motion.emoji, motion.text) }
         if gesture != .none { return (gesture.emoji, gesture.text) }
         if posture != .standing { return (posture.emoji, posture.text) }
         return (motion.emoji, motion.text)
@@ -85,14 +88,24 @@ public struct ActivityFrame: Equatable, Sendable {
 /// horizontal speed and the objects around. Distances are measured in torso lengths L (mid-shoulders to
 /// mid-hips). Waving needs history and is decided by `ActivityTracker`.
 public enum ActivityRules {
+    /// Horizontal speed (m/s, ~23 km/h) above which someone on the street is on a vehicle, not running.
+    public static let ridingSpeed: Float = 6.5
+    /// Seated and moving at least this fast (m/s): riding a bike even when the bike isn't detected.
+    static let seatedRidingSpeed: Float = 3.5
+
+    public static func motion(speed: Float, posture: Posture) -> Motion {
+        if speed >= ridingSpeed || (speed >= seatedRidingSpeed && posture == .sitting) { return .riding }
+        return speed > 1.8 ? .running : speed >= 0.25 ? .walking : .still
+    }
+
     public static func evaluate(joints j: [Joint: Vec2], box: Rect, speed: Float, objects: [DetectedObject]) -> ActivityFrame {
         let midShoulder = mid(j[.leftShoulder], j[.rightShoulder])
         let midHip = mid(j[.leftHip], j[.rightHip])
         let torso: Float? = midShoulder.flatMap { s in midHip.map { h in distance(s, h) } }
         let L = max(torso ?? box.height * 0.3, 0.01)
 
-        let motion: Motion = speed > 1.8 ? .running : speed >= 0.25 ? .walking : .still
         var posture = postureOf(j, midShoulder: midShoulder, midHip: midHip, L: L)
+        let motion = Self.motion(speed: speed, posture: posture)
         let gesture = gestureOf(j, L: L)
         let facing = facingOf(j, L: L)
 
