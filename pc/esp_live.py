@@ -353,8 +353,10 @@ def snapline(img, box, color, d):
                lambda layer, ox, oy: cv2.circle(layer, (ex - ox, ey - oy), 3, color, -1, cv2.LINE_AA), 0.9)
 
 
-def card(img, painter, box, color, title, rows, d):
-    """Detail card beside the box (flips left at the edge), smaller and fainter when far."""
+def card(img, painter, box, color, title, rows, d, taken=None):
+    """Detail card beside the box, smaller and fainter when far. With `taken` (rects of cards already drawn, nearest
+    people first) it tries right, left, then above the box and skips the card when all three would overlap, so a
+    crowd doesn't turn into a pile of cards. Returns whether it was drawn."""
     x0, y0, x1, _ = box
     f = 0.72 + 0.28 * nearness(d)
     s = f * painter.scale
@@ -363,13 +365,31 @@ def card(img, painter, box, color, title, rows, d):
     widths = [painter.measure(title, bold)[0]] + [painter.measure(r, small)[0] for r in rows]
     w, h = int(max(widths) + 2 * pad + 4), int(line * (len(rows) + 1) + 2 * pad)
     gap = int(8 * painter.scale)
-    cx = x1 + gap if x1 + gap + w < img.shape[1] else x0 - gap - w
-    cy = max(int(y0), 4)
+    H, W = img.shape[:2]
+    candidates = [(x1 + gap, max(int(y0), 4)), (x0 - gap - w, max(int(y0), 4)),
+                  (int((x0 + x1) / 2 - w / 2), int(y0) - gap - h)]
+    spot = None
+    for cx, cy in candidates:
+        if cx < 0 or cy < 0 or cx + w > W or cy + h > H:
+            continue
+        if taken is not None and any(cx < tx1 and tx0 < cx + w and cy < ty1 and ty0 < cy + h
+                                     for tx0, ty0, tx1, ty1 in taken):
+            continue
+        spot = (cx, cy)
+        break
+    if spot is None:
+        if taken is not None:
+            return False
+        spot = (x1 + gap if x1 + gap + w < W else x0 - gap - w, max(int(y0), 4))
+    cx, cy = spot
+    if taken is not None:
+        taken.append((cx - 4, cy - 4, cx + w + 4, cy + h + 4))
     tint = tuple(int(c * 0.35) for c in color)
     Painter.panel(img, cx, cy, cx + w, cy + h, tint=tint, alpha=0.5 + 0.2 * nearness(d), radius=int(12 * painter.scale))
     painter.text((cx + pad, cy + pad - int(3 * s)), title, bold)
     for i, r in enumerate(rows):
         painter.text((cx + pad, cy + pad + line * (i + 1) - int(3 * s)), r, small)
+    return True
 
 
 # ----------------------------------------------------------------------------------------------------------- main
@@ -412,7 +432,7 @@ def main():
         if frame is None:
             break
         H, W = frame.shape[:2]
-        focal = W / 2 / math.tan(math.radians(args.fov) / 2)
+        focal = max(W, H) / 2 / math.tan(math.radians(args.fov) / 2)   # FOV of the long side
         seen = []   # (key, label, box, color, distance, is_person)
 
         res = people_model.track(frame, persist=True, tracker="bytetrack.yaml", imgsz=args.imgsz, quantize=16 if half else None,
@@ -451,10 +471,11 @@ def main():
             if not args.no_snaplines:
                 snapline(frame, box, color, d)
             corners(frame, box, color, d)
-        for key, label, box, color, d, is_person in sorted(seen, key=lambda s: -s[4]):
+        taken = []
+        for key, label, box, color, d, is_person in sorted(seen, key=lambda s: s[4]):   # nearest gets the room
             t = state[key]
             card(frame, painter, box, color, label,
-                 [meters(d), kmh(float(np.linalg.norm(t.vel))), clock(now - t.first)], d)
+                 [meters(d), kmh(float(np.linalg.norm(t.vel))), clock(now - t.first)], d, taken)
 
         # HUD: counter + fps (top left), in-view list (top right), event log + watermark (bottom left).
         dt = time.monotonic() - last

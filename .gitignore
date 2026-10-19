@@ -14,3 +14,6 @@ pc/*.engine
 pc/*.mp4
 pc/*.jpg
 __pycache__/
+*.MOV
+*.mov
+*_esp.mp4
