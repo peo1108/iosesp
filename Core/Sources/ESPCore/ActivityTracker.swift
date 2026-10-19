@@ -72,8 +72,13 @@ public final class ActivityTracker {
         var action = Stabilizer<ObjectAction>()
         var carrying = Stabilizer<[Carry]>()
         var wrists: [Joint: [(time: TimeInterval, offset: Float)]] = [:]
+        /// Recent floor positions (x, z) for a displacement-based speed.
+        var path: [(time: TimeInterval, position: Vec2)] = []
         var last: ActivityFrame?
     }
+
+    /// Window for the walking/running speed: displacement over ~0.5 s ignores frame-to-frame depth jitter.
+    static let speedWindow: TimeInterval = 0.5
 
     private struct Known {
         var label: String
@@ -97,11 +102,15 @@ public final class ActivityTracker {
 
     /// `tracks` are the confirmed tracks; `objects` and track geometry are in captured-image coordinates,
     /// turned upright here when Vision ran with `.down`. Returns the state of every person by track id.
+    /// `aspect` is the camera image's width / height: normalized x is stretched by it so the rules measure
+    /// angles and distances in square units (a 4:3 image otherwise squashes horizontal lengths by 25%).
     public func update(tracks: [Track], objects: [DetectedObject], orientation: VisionOrientation,
-                       label: (Track) -> String, at time: TimeInterval) -> [Int: ActivityState] {
-        let upright = orientation == .down
-            ? objects.map { DetectedObject(kind: $0.kind, box: VisionMapping.topLeftRect($0.box, orientation: .down), confidence: $0.confidence) }
-            : objects
+                       label: (Track) -> String, at time: TimeInterval, aspect: Float = 4.0 / 3.0) -> [Int: ActivityState] {
+        func square(_ p: Vec2) -> Vec2 { Vec2(p.x * aspect, p.y) }
+        func square(_ r: Rect) -> Rect { Rect(x: r.x * aspect, y: r.y, width: r.width * aspect, height: r.height) }
+        func upright(_ p: Vec2) -> Vec2 { square(orientation == .down ? VisionMapping.topLeftPoint(p, orientation: .down) : p) }
+        func upright(_ r: Rect) -> Rect { square(orientation == .down ? VisionMapping.topLeftRect(r, orientation: .down) : r) }
+        let uprightObjects = objects.map { DetectedObject(kind: $0.kind, box: upright($0.box), confidence: $0.confidence) }
 
         var states: [Int: ActivityState] = [:]
         for track in tracks {
@@ -118,10 +127,10 @@ public final class ActivityTracker {
             known[track.id]?.lastSeen = track.lastSeen
             guard track.kind.isPerson, var entry = known[track.id] else { continue }
 
-            let joints = orientation == .down ? track.joints.mapValues { VisionMapping.topLeftPoint($0, orientation: .down) } : track.joints
-            let box = orientation == .down ? VisionMapping.topLeftRect(track.box, orientation: .down) : track.box
-            let speed = (track.velocity.x * track.velocity.x + track.velocity.z * track.velocity.z).squareRoot()
-            var raw = ActivityRules.evaluate(joints: joints, box: box, speed: speed, objects: upright)
+            let joints = track.joints.mapValues(upright)
+            let box = upright(track.box)
+            let speed = Self.floorSpeed(&entry.person, track: track)
+            var raw = ActivityRules.evaluate(joints: joints, box: box, speed: speed, objects: uprightObjects)
             if isWaving(&entry.person, joints: joints, at: time) { raw.gesture = .waving }
 
             var p = entry.person
@@ -178,13 +187,29 @@ public final class ActivityTracker {
         return nil
     }
 
+    /// Horizontal speed from how far the feet moved over the last `speedWindow`; falls back to the tracker's
+    /// velocity until enough history exists.
+    private static func floorSpeed(_ person: inout PersonState, track: Track) -> Float {
+        let instant = (track.velocity.x * track.velocity.x + track.velocity.z * track.velocity.z).squareRoot()
+        guard let world = track.worldPosition else { return instant }
+        let now = track.lastSeen
+        if person.path.last?.time != now { person.path.append((now, Vec2(world.x, world.z))) }
+        person.path.removeAll { now - $0.time > speedWindow + 0.05 }
+        guard let first = person.path.first, let last = person.path.last, last.time - first.time >= speedWindow * 0.6 else {
+            return instant
+        }
+        return (last.position - first.position).squareLength.squareRoot() / Float(last.time - first.time)
+    }
+
     /// Wrist above the shoulder swinging sideways: ≥ 2 direction changes of ≥ 0.25 L within 1.2 s.
     private func isWaving(_ person: inout PersonState, joints j: [Joint: Vec2], at time: TimeInterval) -> Bool {
-        guard let ls = j[.leftShoulder], let rs = j[.rightShoulder], let lh = j[.leftHip], let rh = j[.rightHip] else {
+        guard let ls = j[.leftShoulder], let rs = j[.rightShoulder] else {
             person.wrists = [:]
             return false
         }
-        let L = max(ActivityRules.distance((ls + rs) / 2, (lh + rh) / 2), 0.01)
+        // Torso length, or (hips out of frame, e.g. waving close to the camera) from the shoulder width.
+        let torso = ActivityRules.mid(j[.leftHip], j[.rightHip]).map { ActivityRules.distance((ls + rs) / 2, $0) }
+        let L = max(torso ?? ActivityRules.distance(ls, rs) * 1.6, 0.01)
         var waving = false
         for (wrist, shoulder) in [(Joint.leftWrist, ls), (Joint.rightWrist, rs)] {
             guard let w = j[wrist], w.y < shoulder.y else {

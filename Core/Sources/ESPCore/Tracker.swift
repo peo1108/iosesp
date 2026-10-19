@@ -59,10 +59,12 @@ public final class Tracker {
         var freeHigh = Set(high)
 
         // 1. Confident detections against every live track's predicted box.
-        matchByOverlap(Set(high), &freeHigh, &freeTracks, threshold: config.highIoU, detections, at: time)
+        // Confirmed tracks pick first, so a tentative duplicate can't steal a person's detection (and id).
+        matchByOverlap(Set(high), &freeHigh, &freeTracks, threshold: config.highIoU, detections, at: time, states: [.confirmed])
+        matchByOverlap(Set(high), &freeHigh, &freeTracks, threshold: config.highIoU, detections, at: time, states: [.tentative])
         // 2. Weak detections only extend the tracks still unmatched, and need a tighter overlap.
         var freeLow = Set(low)
-        matchByOverlap(Set(low), &freeLow, &freeTracks, threshold: config.lowIoU, detections, at: time)
+        matchByOverlap(Set(low), &freeLow, &freeTracks, threshold: config.lowIoU, detections, at: time, states: [.confirmed, .tentative])
         // 3. Confident leftovers by world proximity (this is also how lost tracks come back).
         matchByWorld(&freeHigh, &freeTracks, detections, at: time)
 
@@ -99,9 +101,9 @@ public final class Tracker {
     // MARK: Matching
 
     private func matchByOverlap(_ candidates: Set<Int>, _ freeDetections: inout Set<Int>, _ freeTracks: inout Set<Int>,
-                                threshold: Float, _ detections: [Detection], at time: TimeInterval) {
+                                threshold: Float, _ detections: [Detection], at time: TimeInterval, states: Set<TrackState>) {
         var pairs: [(t: Int, d: Int, iou: Float)] = []
-        for t in freeTracks where entries[t].track.state != .lost {
+        for t in freeTracks where states.contains(entries[t].track.state) {
             for d in candidates where detections[d].kind == entries[t].track.kind {
                 let iou = entries[t].predictedBox.iou(detections[d].box)
                 if iou >= threshold { pairs.append((t, d, iou)) }
@@ -119,7 +121,10 @@ public final class Tracker {
                               _ detections: [Detection], at time: TimeInterval) {
         var pairs: [(t: Int, d: Int, distance: Float)] = []
         for t in freeTracks {
-            guard let a = entries[t].track.worldPosition else { continue }
+            // Where the track would be by now (a walker hidden for a second has moved on), up to 2 s ahead.
+            let track = entries[t].track
+            guard let last = track.worldPosition else { continue }
+            let a = last + track.velocity * Float(min(max(time - track.lastSeen, 0), 2))
             for d in freeDetections where detections[d].kind == entries[t].track.kind {
                 guard let b = detections[d].worldPosition else { continue }
                 let distance = length(a - b)
@@ -199,7 +204,9 @@ public final class Tracker {
                 k.update(world)
                 entry.worldKalman = k
             } else {
-                entry.worldKalman = KalmanCV(position: world, processNoise: 4, measurementNoise: 0.0025, initialVelocityVariance: 4)
+                // Low process noise: feet positions jitter several cm frame to frame, and a twitchy
+                // velocity would make people standing still read as walking.
+                entry.worldKalman = KalmanCV(position: world, processNoise: 0.5, measurementNoise: 0.005, initialVelocityVariance: 4)
             }
             track.worldPosition = entry.worldKalman?.position
             track.velocity = entry.worldKalman?.velocity ?? .zero

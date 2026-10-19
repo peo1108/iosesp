@@ -161,5 +161,9 @@ public struct Settings: Codable, Equatable, Sendable {
         haptics = read(.haptics, d.haptics)
         accent = read(.accent, d.accent)
         hasSeenHint = read(.hasSeenHint, d.hasSeenHint)
+
+        // A v1 save (no v2 keys) with a named preset gets that preset's v2 features, not its old v1 flags.
+        let isV1 = !c.contains(.label) && !c.contains(.activity)
+        if isV1, rawPreset != nil, preset != .custom { apply(preset) }
     }
 }
