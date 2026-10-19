@@ -123,8 +123,8 @@ final class ESPPipeline: @unchecked Sendable {
         let mask = visionPass.mask.flatMap { maskImage($0, orientation: orientation) }
 
         Task { @MainActor [store] in
-            store.publish(tracks, camera: camera, at: timestamp, trackingNormal: trackingNormal, hasDepth: hasDepth)
-            store.objects = objects
+            store.publish(tracks, objects: objects, orientation: orientation, camera: camera, at: timestamp,
+                          trackingNormal: trackingNormal, hasDepth: hasDepth)
             if let mask {
                 store.chamsMask = mask
             } else if !wantMask {

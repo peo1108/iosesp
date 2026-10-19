@@ -11,6 +11,8 @@ struct PlayerLayout: Identifiable {
     let id: Int
     let track: Track
     let label: String
+    /// What the person is doing (nil for animals, or before the first activity pass).
+    var activity: ActivityState?
     var color: Color
     let rect: CGRect
     /// The 8 projected corners of the world-space box (0–3 bottom, 4–7 top), when every corner is in front.
@@ -76,6 +78,8 @@ struct ESPFrameLayout {
     let mapper: ScreenMapper
     let players: [PlayerLayout]
     let offscreen: [OffscreenMarker]
+    /// ARFrame clock of this display frame (same clock as `Track.lastSeen`).
+    let timestamp: TimeInterval
 }
 
 enum ESPLayout {
@@ -98,8 +102,10 @@ enum ESPLayout {
                 scale = CGFloat(min(max(d0 / max(d1, 0.1), 0.5), 2))
                 base = predicted
             }
-            return PlayerLayout(track: track, label: store.label(for: track), color: Palette.color(for: track),
-                                mapper: now, thenAnchor: thenAnchor, nowAnchor: nowAnchor, scale: scale, base: base)
+            var layout = PlayerLayout(track: track, label: store.label(for: track), color: Palette.color(for: track),
+                                      mapper: now, thenAnchor: thenAnchor, nowAnchor: nowAnchor, scale: scale, base: base)
+            layout.activity = store.activities[track.id]
+            return layout
         }
 
         var offscreen: [OffscreenMarker] = []
@@ -116,6 +122,6 @@ enum ESPLayout {
                                                  color: Palette.color(for: track)))
             }
         }
-        return ESPFrameLayout(mapper: now, players: players, offscreen: offscreen)
+        return ESPFrameLayout(mapper: now, players: players, offscreen: offscreen, timestamp: frame.timestamp)
     }
 }

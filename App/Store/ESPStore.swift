@@ -21,7 +21,15 @@ final class ESPStore {
     /// The YOLO models failed to load; people come from the weaker Vision fallback.
     var modelWarning = false
 
+    /// What each person is doing, by track id.
+    var activities: [Int: ActivityState] = [:]
+    /// Recent "Người 01 ngồi xuống"-style events, oldest first.
+    var events: [ActivityEvent] = []
+    /// Timestamp of the latest results (ARFrame clock), for "time in frame".
+    var timestamp: TimeInterval = 0
+
     @ObservationIgnored private var labels = LabelBook()
+    @ObservationIgnored private let activityTracker = ActivityTracker()
     @ObservationIgnored private var lastPublish: Date?
 
     var confirmed: [Track] { tracks.filter { $0.state == .confirmed } }
@@ -40,11 +48,17 @@ final class ESPStore {
     func clear() {
         tracks = []
         objects = []
+        activities = [:]
+        events = []
+        activityTracker.reset()
         chamsMask = nil
         cameras = TimedHistory(keep: 1.2)
     }
 
-    func publish(_ tracks: [Track], camera: ARCamera, at timestamp: TimeInterval, trackingNormal: Bool, hasDepth: Bool) {
+    func publish(_ tracks: [Track], objects: [DetectedObject], orientation: VisionOrientation, camera: ARCamera,
+                 at timestamp: TimeInterval, trackingNormal: Bool, hasDepth: Bool) {
+        self.objects = objects
+        self.timestamp = timestamp
         let now = Date()
         if let last = lastPublish {
             let instant = 1 / max(now.timeIntervalSince(last), 0.001)
@@ -55,5 +69,9 @@ final class ESPStore {
         self.tracks = tracks
         self.trackingNormal = trackingNormal
         self.hasDepth = hasDepth
+        activities = activityTracker.update(tracks: tracks.filter { $0.state == .confirmed }, objects: objects,
+                                            orientation: orientation, label: { [unowned self] in label(for: $0) },
+                                            at: timestamp)
+        if events != activityTracker.events { events = activityTracker.events }
     }
 }

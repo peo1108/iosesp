@@ -13,7 +13,8 @@ struct ESPOverlay: View {
 
     private var showsAnything: Bool {
         let s = settings
-        return s.box || s.skeleton || s.headDot || s.snaplines || s.label || s.distance || s.offscreenArrows
+        return s.box || s.skeleton || s.headDot || s.snaplines || s.label || s.activity || s.detailCard || s.distance
+            || s.offscreenArrows
             || showsChams || s.stats || s.radar || s.fakeIsland || s.watermark
     }
 
@@ -21,7 +22,7 @@ struct ESPOverlay: View {
         GeometryReader { geo in
             if showsAnything {
                 TimelineView(.animation(minimumInterval: 1.0 / 60)) { timeline in
-                    content(layout: currentLayout(size: geo.size), time: timeline.date)
+                    content(layout: currentLayout(size: geo.size), size: geo.size, time: timeline.date)
                 }
             }
         }
@@ -30,7 +31,7 @@ struct ESPOverlay: View {
     }
 
     @ViewBuilder
-    private func content(layout: ESPFrameLayout?, time: Date) -> some View {
+    private func content(layout: ESPFrameLayout?, size: CGSize, time: Date) -> some View {
         let accent = Palette.accent(settings.accent)
         let insets = InterfaceOrientation.safeAreaInsets
         let islandLeading = InterfaceOrientation.islandOnLeading
@@ -43,7 +44,10 @@ struct ESPOverlay: View {
             ESPCanvas(layouts: players,
                       options: .init(box: settings.box, boxStyle: settings.boxStyle.effective(trackingNormal: store.trackingNormal),
                                      skeleton: settings.skeleton, headDot: settings.headDot, snaplines: settings.snaplines))
-            PlayerGlassViews(layouts: players, options: .init(label: settings.label, distance: settings.distance))
+            PlayerGlassViews(layouts: players,
+                             options: .init(label: settings.label, activity: settings.activity, distance: settings.distance,
+                                            detailCard: settings.detailCard),
+                             now: layout?.timestamp ?? 0, viewWidth: size.width)
             if settings.offscreenArrows {
                 OffscreenArrowsView(markers: (layout?.offscreen ?? []).filter { marker in
                     settings.showAnimals || store.tracks.first { $0.id == marker.id }?.kind.isPerson ?? true
