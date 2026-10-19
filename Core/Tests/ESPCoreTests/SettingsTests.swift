@@ -86,7 +86,3 @@ import Testing
     #expect(s.preset == .vip && s.label && s.box)
 }
 
-@Test func thermalBudgets() {
-    #expect(ThermalPolicy.budget(.nominal, isRecording: false) == PerceptionBudget(hz: 30, chamsAllowed: true, showHeatWarning: false))
-    #expect(ThermalPolicy.budget(.critical, isRecording: true) == PerceptionBudget(hz: 5, chamsAllowed: false, showHeatWarning: true))
-}

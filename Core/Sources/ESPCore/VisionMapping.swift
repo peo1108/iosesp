@@ -21,4 +21,19 @@ public enum VisionMapping {
         case .down: Rect(x: 1 - r.x - r.width, y: r.y, width: r.width, height: r.height)
         }
     }
+
+    /// For raw model outputs that are already top-left based (e.g. decoded YOLO tensors).
+    public static func topLeftPoint(_ p: Vec2, orientation: VisionOrientation) -> Vec2 {
+        switch orientation {
+        case .up: p
+        case .down: Vec2(1 - p.x, 1 - p.y)
+        }
+    }
+
+    public static func topLeftRect(_ r: Rect, orientation: VisionOrientation) -> Rect {
+        switch orientation {
+        case .up: r
+        case .down: Rect(x: 1 - r.x - r.width, y: 1 - r.y - r.height, width: r.width, height: r.height)
+        }
+    }
 }
