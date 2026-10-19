@@ -40,7 +40,9 @@ jobs:
       - name: Export YOLO models to CoreML
         if: steps.models.outputs.cache-hit != 'true'
         run: |
-          pip install --quiet "ultralytics>=8.3,<8.4" "coremltools>=8.0"
+          # coremltools' torch frontend breaks on NumPy ≥ 2.3 ("only 0-dimensional arrays…") and newer torch.
+          pip install --quiet "numpy<2.0" "torch==2.5.1" "torchvision==0.20.1" "coremltools==8.3.0" "ultralytics>=8.3,<8.4"
+          python -c "import numpy, torch, coremltools, ultralytics; print(numpy.__version__, torch.__version__, coremltools.__version__, ultralytics.__version__)"
           python tools/export-models.py
           ls -la App/Models
 
