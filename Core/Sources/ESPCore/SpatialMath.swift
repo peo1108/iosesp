@@ -81,6 +81,13 @@ public enum SpatialMath {
         return Float(inFront) / Float(valid.count) > fraction
     }
 
+    /// A spot sample (e.g. at a shoulder) is trusted only near the body's depth; otherwise it probably hit
+    /// the background, and the body depth is used instead.
+    public static func trustedDepth(_ sample: Float?, near reference: Float, tolerance: Float = 0.3) -> Float {
+        guard let sample, abs(sample - reference) <= tolerance else { return reference }
+        return sample
+    }
+
     /// Rotation about +Y that aligns the box's width axis with the shoulder line.
     public static func yaw(leftShoulder: Vec3, rightShoulder: Vec3) -> Float {
         let d = leftShoulder - rightShoulder

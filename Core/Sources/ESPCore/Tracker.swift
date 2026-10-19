@@ -18,6 +18,9 @@ public final class Tracker {
         var boxFilter = OneEuroFilter<Vec4>(minCutoff: 1.2, beta: 4)
         var jointFilters: [Joint: OneEuroFilter<Vec2>] = [:]
         var worldFilter = OneEuroFilter<Vec3>(minCutoff: 1.0, beta: 0.7)
+        /// Yaw is filtered as a unit vector (cos, sin) so it never averages through 0 at ±π.
+        var yawFilter = OneEuroFilter<Vec2>(minCutoff: 0.5, beta: 0.3)
+        var heightFilter = OneEuroFilter<Vec2>(minCutoff: 0.5, beta: 0.2)
     }
 
     public let config: TrackerConfig
@@ -144,8 +147,9 @@ public final class Tracker {
 
         track.distance = d.distance
         track.distanceIsEstimated = d.distanceIsEstimated
-        track.heightMeters = d.heightMeters
-        track.yaw = d.yaw
+        track.heightMeters = entry.heightFilter.filter(Vec2(d.heightMeters, 0), at: time).x
+        let heading = entry.yawFilter.filter(Vec2(cosf(d.yaw), sinf(d.yaw)), at: time)
+        track.yaw = atan2f(heading.y, heading.x)
         track.occlusion = d.occlusion
         track.hits += 1
         track.lastSeen = time
