@@ -97,3 +97,17 @@ ARKit world tracking chỉ dùng cam 1× (Apple xác nhận trên forum), nên 0
 - **Quy ước attitude của CoreMotion:** đã có test cho cả hai cách đọc, chốt bằng trọng lực lúc chạy. Cần kiểm tra trên máy: lia sang phải thì box phải đứng yên trên người.
 - **Khoảng cách ước lượng sai với người thấp, trẻ em, hoặc người cúi:** chấp nhận được, đã có dấu `~`.
 - **60 Hz làm máy nóng nhanh hơn:** chính sách nhiệt tự hạ tần số.
+
+## 8. Chỉnh sau khi thử trên máy (2026-10-20)
+
+- **Nhãn:** chỉ ghi "Người" hoặc tên con vật, không đánh số nữa.
+- **Bỏ nhận dạng trạng thái:** bỏ luật hành động/tư thế/đồ vật (`Activity`, `ActivityTracker`).
+  - Model vật thể chỉ chạy khi bật con vật.
+  - Nhật ký giờ lấy từ `PresenceLog`: vào/rời khung, con vật xuất hiện, phóng qua (tốc độ sàn ≥ 6.5 m/s trong 3 lần cập nhật liền).
+- **Box bị "lố":** box người được cắt theo các khớp nhìn thấy (`PersonBox.visible`), không bao giờ to hơn box YOLO. Ngưỡng khớp hạ xuống 0.35.
+- **Bỏ phóng to/thu nhỏ box theo độ sâu khi khoảng cách chỉ là ước lượng.** Kalman world tin khoảng cách ước lượng ít hơn (nhiễu 0.06 so với 0.005). Tốc độ hiển thị chỉ tính theo mặt sàn.
+- **Chiều sâu:** `DepthStyle` theo log khoảng cách từ 1.5 tới 18 m.
+  - Nét box 2.6 → 1 pt, độ đậm 1 → 0.45, người gần có thêm viền sáng.
+  - Thẻ và mũi tên thu nhỏ còn 0.72 lần khi ở xa.
+  - Người xa được vẽ trước, người gần đè lên trên.
+- **Tia lite:** kẻ từ giữa mép trên xuống đỉnh box.

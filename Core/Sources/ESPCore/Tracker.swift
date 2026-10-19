@@ -240,8 +240,10 @@ public final class Tracker {
                 entry.worldKalman = k
             } else {
                 // Low process noise: feet positions jitter several cm frame to frame, and a twitchy
-                // velocity would make people standing still read as walking.
-                entry.worldKalman = KalmanCV(position: world, processNoise: 0.5, measurementNoise: 0.005, initialVelocityVariance: 4)
+                // velocity would make people standing still read as walking. Distances guessed from box size
+                // (no depth) jump by tens of cm, so those measurements are trusted much less.
+                let noise: Float = d.distanceIsEstimated ? 0.06 : 0.005
+                entry.worldKalman = KalmanCV(position: world, processNoise: 0.5, measurementNoise: noise, initialVelocityVariance: 4)
             }
             track.worldPosition = entry.worldKalman?.position
             track.velocity = entry.worldKalman?.velocity ?? .zero

@@ -235,3 +235,16 @@ private func rider(_ x: Float, confidence: Float = 0.8) -> Detection {
     let r = t.update([big], at: 0.15)
     #expect(r.count == 1 && r[0].id == 2)
 }
+
+@Test func guessedDistanceJitterDoesNotLookLikeWalking() {
+    // Standing still at ~3 m with no depth: the guess jumps ±25 cm along the view ray every frame.
+    var rng = SplitMix64(seed: 7)
+    let t = Tracker()
+    var speeds: [Float] = []
+    for i in 0..<120 {
+        var d = det(0.4, world: Vec3(0, 0, -3 + Float.random(in: -0.25...0.25, using: &rng)))
+        d.distanceIsEstimated = true
+        if let track = t.update([d], at: Double(i) / 60).first, i > 30 { speeds.append(track.floorSpeed) }
+    }
+    #expect(speeds.reduce(0, +) / Float(speeds.count) < 0.3)   // reads as 0 km/h
+}

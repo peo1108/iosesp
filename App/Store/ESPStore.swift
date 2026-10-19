@@ -12,19 +12,15 @@ final class ESPStore {
     /// Perception results per second (smoothed).
     var fps: Double = 0
     var trackingNormal = true
-    /// Latest animal/object-model objects (phones, cups, chairs…), captured-image coordinates; feeds activities.
-    var objects: [DetectedObject] = []
     /// The YOLO models failed to load; people come from the weaker Vision fallback.
     var modelWarning = false
 
-    /// What each person is doing, by track id.
-    var activities: [Int: ActivityState] = [:]
-    /// Recent "Người ngồi xuống"-style events, oldest first.
+    /// Recent "Người vừa vào khung hình"-style events, oldest first.
     var events: [ActivityEvent] = []
     /// Timestamp of the latest results (camera clock), for "time in frame".
     var timestamp: TimeInterval = 0
 
-    @ObservationIgnored private let activityTracker = ActivityTracker()
+    @ObservationIgnored private let presence = PresenceLog()
     @ObservationIgnored private var lastPublish: Date?
 
     var confirmed: [Track] { tracks.filter { $0.state == .confirmed } }
@@ -41,18 +37,14 @@ final class ESPStore {
 
     func clear() {
         tracks = []
-        objects = []
-        activities = [:]
         events = []
-        activityTracker.reset()
+        presence.reset()
         poses = TimedHistory(keep: 1.2)
         fps = 0
         lastPublish = nil
     }
 
-    func publish(_ tracks: [Track], objects: [DetectedObject], orientation: VisionOrientation, pose: CameraPose,
-                 at timestamp: TimeInterval, trackingNormal: Bool) {
-        self.objects = objects
+    func publish(_ tracks: [Track], pose: CameraPose, at timestamp: TimeInterval, trackingNormal: Bool) {
         self.timestamp = timestamp
         let now = Date()
         if let last = lastPublish {
@@ -63,10 +55,8 @@ final class ESPStore {
         poses.insert(pose, at: timestamp)
         self.tracks = tracks
         self.trackingNormal = trackingNormal
-        activities = activityTracker.update(tracks: tracks.filter { $0.state == .confirmed }, objects: objects,
-                                            orientation: orientation, label: { [unowned self] in label(for: $0) },
-                                            at: timestamp)
-        if events != activityTracker.events { events = activityTracker.events }
+        presence.update(tracks: confirmed, label: { [unowned self] in label(for: $0) }, at: timestamp)
+        if events != presence.events { events = presence.events }
     }
 
     /// People and animals as the HUD counter text, with the same filter as the ESP on screen.

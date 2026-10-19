@@ -68,12 +68,9 @@ private let person: (box: (Float, Float, Float, Float), conf: Float, kpts: [Int:
 
 @Test func cocoLabels() {
     #expect(COCOClass(label: "dog") == .animal(.dog))
-    #expect(COCOClass(label: "cell phone") == .object(.phone))
-    #expect(COCOClass(label: "wine glass") == .object(.wineGlass))
-    #expect(COCOClass(label: "sports ball") == .object(.ball))
+    #expect(COCOClass(label: "cell phone") == .other)
     #expect(COCOClass(label: "person") == .person)
     #expect(COCOClass(label: "toaster") == .other)
-    #expect(ObjectKind.phone.emoji == "📱" && ObjectKind.laptop.name == "Laptop")
 }
 
 @Test func topLeftMappingDown() {
@@ -95,4 +92,45 @@ private let person: (box: (Float, Float, Float, Float), conf: Float, kpts: [Int:
     let recording = ThermalPolicy.budget(.nominal, isRecording: true)
     #expect(recording.poseHz == 30 && recording.objectHz == 15)
     #expect(ThermalPolicy.budget(.critical, isRecording: true).poseHz == 12)
+}
+
+// MARK: Visible person box
+
+/// Upright standing skeleton: shoulders y 0.3, hips 0.5, ankles 0.9, nose 0.22.
+private func skeleton() -> [Joint: Vec2] {
+    [
+        .nose: Vec2(0.5, 0.22), .leftEye: Vec2(0.52, 0.21), .rightEye: Vec2(0.48, 0.21),
+        .leftShoulder: Vec2(0.56, 0.3), .rightShoulder: Vec2(0.44, 0.3),
+        .leftElbow: Vec2(0.6, 0.42), .rightElbow: Vec2(0.4, 0.42),
+        .leftWrist: Vec2(0.62, 0.55), .rightWrist: Vec2(0.38, 0.55),
+        .leftHip: Vec2(0.54, 0.5), .rightHip: Vec2(0.46, 0.5),
+        .leftKnee: Vec2(0.54, 0.7), .rightKnee: Vec2(0.46, 0.7),
+        .leftAnkle: Vec2(0.54, 0.9), .rightAnkle: Vec2(0.46, 0.9),
+    ]
+}
+
+private let loose = Rect(x: 0.33, y: 0.12, width: 0.34, height: 0.84)
+
+@Test func fullyVisiblePersonKeepsAlmostTheWholeBox() {
+    let r = PersonBox.visible(loose, joints: skeleton())
+    #expect(abs(r.x - 0.33) < 1e-4 && abs(r.width - 0.34) < 1e-4)
+    #expect(abs(r.y - 0.14) < 1e-4 && abs(r.maxY - 0.93) < 1e-4)
+}
+
+@Test func hiddenLegsCutTheBoxAtTheHips() {
+    var j = skeleton()
+    for joint in [Joint.leftKnee, .rightKnee, .leftAnkle, .rightAnkle] { j[joint] = nil }
+    let r = PersonBox.visible(loose, joints: j)
+    #expect(abs(r.maxY - 0.61) < 1e-4)   // lowest visible joint (wrists 0.55) + 0.3 torso lengths
+    #expect(r.y == PersonBox.visible(loose, joints: skeleton()).y)
+}
+
+@Test func tooFewKeypointsLeaveTheBoxAlone() {
+    #expect(PersonBox.visible(loose, joints: [.nose: Vec2(0.5, 0.2), .leftShoulder: Vec2(0.55, 0.3)]) == loose)
+}
+
+@Test func visibleBoxNeverGrows() {
+    let tight = Rect(x: 0.45, y: 0.25, width: 0.1, height: 0.3)
+    let r = PersonBox.visible(tight, joints: skeleton())
+    #expect(r.x >= tight.x - 1e-6 && r.maxY <= tight.maxY + 1e-6 && r.width <= tight.width + 1e-6)
 }

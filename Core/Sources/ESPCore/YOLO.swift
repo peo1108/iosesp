@@ -73,3 +73,40 @@ public enum YOLO {
         return kept
     }
 }
+
+/// Trims a person box to what can actually be seen. The detector draws the whole body it expects, so someone
+/// half behind a desk or a monitor gets a box over the furniture too; the confident keypoints say where the body
+/// really is. The result only ever shrinks the detector's box.
+public enum PersonBox {
+    /// `joints` in the same normalized coordinates as `box`; `aspect` is image width / height.
+    public static func visible(_ box: Rect, joints: [Joint: Vec2], aspect: Float = 4.0 / 3.0) -> Rect {
+        let points = joints.filter { $0.key != .neck && $0.key != .root }
+        let shoulders = [joints[.leftShoulder], joints[.rightShoulder]].compactMap { $0 }
+        guard points.count >= 5, !shoulders.isEmpty, let bounds = Rect.bounding(Array(points.values)) else { return box }
+
+        // Body scale in image heights: torso length, else shoulder width, else the keypoints' spread.
+        func length(_ a: Vec2, _ b: Vec2) -> Float { ((a - b) * Vec2(aspect, 1)).squareLength.squareRoot() }
+        let hips = [joints[.leftHip], joints[.rightHip]].compactMap { $0 }
+        let midShoulder = shoulders.reduce(Vec2.zero, +) / Float(shoulders.count)
+        let unit: Float
+        if !hips.isEmpty {
+            unit = length(midShoulder, hips.reduce(Vec2.zero, +) / Float(hips.count))
+        } else if shoulders.count == 2 {
+            unit = length(shoulders[0], shoulders[1]) * 1.6
+        } else {
+            unit = bounds.height
+        }
+        guard unit > 0.01 else { return box }
+
+        let head = [Joint.nose, .leftEye, .rightEye, .leftEar, .rightEar].compactMap { joints[$0]?.y }
+        let top = head.min().map { $0 - 0.35 * unit } ?? bounds.minY - 0.6 * unit
+        let feetSeen = joints[.leftAnkle] != nil || joints[.rightAnkle] != nil
+        let bottom = bounds.maxY + (feetSeen ? 0.15 : 0.3) * unit
+        let side = 0.35 * unit / aspect
+
+        let x0 = max(box.x, bounds.x - side), x1 = min(box.x + box.width, bounds.x + bounds.width + side)
+        let y0 = max(box.y, top), y1 = min(box.maxY, bottom)
+        guard x1 - x0 > 0.2 * box.width, y1 - y0 > 0.2 * box.height else { return box }
+        return Rect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
+    }
+}

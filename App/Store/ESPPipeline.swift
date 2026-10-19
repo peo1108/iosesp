@@ -2,8 +2,8 @@ import ESPCore
 import Foundation
 
 /// Capture → Perception → Spatial → Tracker → Store. Heavy work runs on `processingQueue`;
-/// frames that arrive while it is busy, or faster than `poseHz`, are dropped. The animal/object model runs
-/// on its own slower gate (`objectHz`) inside the same pass.
+/// frames that arrive while it is busy, or faster than `poseHz`, are dropped. The animal model runs on its own
+/// slower gate (`objectHz`) inside the same pass, and only while animals are shown.
 final class ESPPipeline: @unchecked Sendable {
     /// YOLO when the compiled models are bundled; otherwise people come from Vision. Loaded lazily on the
     /// processing queue: the first Neural Engine load can take seconds and must not block launch.
@@ -21,7 +21,6 @@ final class ESPPipeline: @unchecked Sendable {
 
     // Processing-queue only.
     private var objectGate = FrameGate()
-    private var objects: [DetectedObject] = []
 
     // Guarded by `lock`.
     private let lock = NSLock()
@@ -29,7 +28,6 @@ final class ESPPipeline: @unchecked Sendable {
     private var poseGate = FrameGate()
     private var _poseHz: Double = 60
     private var _objectHz: Double = 30
-    private var _wantAnimals = false
     private var _visionOrientation: VisionOrientation = .up
 
     var poseHz: Double {
@@ -37,16 +35,10 @@ final class ESPPipeline: @unchecked Sendable {
         set { lock.withLock { _poseHz = newValue } }
     }
 
-    /// 0 turns the animal/object model off.
+    /// 0 turns the animal model off.
     var objectHz: Double {
         get { lock.withLock { _objectHz } }
         set { lock.withLock { _objectHz = newValue } }
-    }
-
-    /// Animals become tracks only when shown; otherwise the object model just feeds activities.
-    var wantAnimals: Bool {
-        get { lock.withLock { _wantAnimals } }
-        set { lock.withLock { _wantAnimals = newValue } }
     }
 
     /// Follows the interface orientation so the models always see people upright.
@@ -65,7 +57,6 @@ final class ESPPipeline: @unchecked Sendable {
     func reset() {
         processingQueue.async { [self] in
             tracker.reset()
-            objects = []
             objectGate = FrameGate()
             Task { @MainActor [store] in store.clear() }
         }
@@ -86,7 +77,7 @@ final class ESPPipeline: @unchecked Sendable {
 
     private func process(_ frame: CameraFrame) {
         if frame.tracking == .unavailable { tracker.reset() }
-        let (orientation, objectHz, wantAnimals) = lock.withLock { (_visionOrientation, _objectHz, _wantAnimals) }
+        let (orientation, objectHz) = lock.withLock { (_visionOrientation, _objectHz) }
         let image = frame.image
 
         // People: YOLO-pose, or Vision as a fallback.
@@ -97,27 +88,22 @@ final class ESPPipeline: @unchecked Sendable {
             raw = vision.detect(in: image, orientation: orientation)
         }
 
-        // Animals & objects on their own slower gate.
+        // Animals on their own slower gate.
         var animalsObserved = false
         if let yolo, objectHz > 0, objectGate.shouldRun(at: frame.timestamp, hz: objectHz) {
-            let things = yolo.things(in: image, orientation: orientation)
-            if wantAnimals { raw += things.animals }
-            objects = things.objects
+            raw += yolo.animals(in: image, orientation: orientation)
             animalsObserved = true
         } else if objectHz <= 0 {
             // The animal model is off: let existing animal tracks age out instead of freezing on screen.
-            objects = []
             animalsObserved = true
         }
 
         let detections = resolver.resolve(raw, frame: frame)
         let tracks = tracker.update(detections, at: frame.timestamp, animalsObserved: animalsObserved)
-        let objects = self.objects
         let pose = frame.pose, timestamp = frame.timestamp, trackingNormal = frame.tracking == .normal
 
         Task { @MainActor [store] in
-            store.publish(tracks, objects: objects, orientation: orientation, pose: pose, at: timestamp,
-                          trackingNormal: trackingNormal)
+            store.publish(tracks, pose: pose, at: timestamp, trackingNormal: trackingNormal)
         }
     }
 }

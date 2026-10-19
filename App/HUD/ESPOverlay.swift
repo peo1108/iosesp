@@ -58,8 +58,7 @@ struct ESPOverlay: View {
         .overlay(alignment: .topTrailing) {
             if settings.playerList {
                 PlayerListView(rows: players.sorted { $0.distance < $1.distance }.prefix(8).map { p in
-                    PlayerListView.Row(id: p.id, label: p.label,
-                                       detail: p.activity.map { "\($0.mainEmoji) \($0.mainText)" } ?? kindEmoji(p.track.kind),
+                    PlayerListView.Row(id: p.id, label: p.label, detail: kindEmoji(p.track.kind),
                                        distance: Readout.distance(p.distance, estimated: p.track.distanceIsEstimated),
                                        color: p.color)
                 })

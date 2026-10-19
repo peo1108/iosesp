@@ -1,7 +1,7 @@
 import ESPCore
 import SwiftUI
 
-/// Recent events ("Người ngồi xuống"), newest at the bottom, each fading out over its lifetime.
+/// Recent events ("Người vừa vào khung hình"), newest at the bottom, each fading out over its lifetime.
 struct EventLogView: View {
     let events: [ActivityEvent]
     /// Camera clock now.
@@ -10,7 +10,7 @@ struct EventLogView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(events) { event in
-                let age = (now - event.time) / ActivityTracker.eventTTL
+                let age = (now - event.time) / PresenceLog.eventTTL
                 Text("▸ " + event.text)
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 10)

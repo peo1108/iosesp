@@ -22,12 +22,6 @@ final class AppModel {
         ThermalPolicy.budget(thermal.level, isRecording: recorder.isRecording)
     }
 
-    /// Animals, and the activities behind the list and the event log, need the animal/object model.
-    private var needsObjects: Bool {
-        let s = settings.settings
-        return s.showAnimals || s.eventLog || s.playerList
-    }
-
     /// Anything on screen that needs fresh perception results.
     private var needsPerception: Bool {
         let s = settings.settings
@@ -39,8 +33,8 @@ final class AppModel {
         let budget = budget
         // Idle at 10 Hz when nothing is shown, so a reveal is instant without heating the phone.
         pipeline.poseHz = needsPerception ? budget.poseHz : min(budget.poseHz, 10)
-        pipeline.objectHz = needsPerception && needsObjects ? budget.objectHz : 0
-        pipeline.wantAnimals = settings.settings.showAnimals
+        // The animal model only runs while animals are shown.
+        pipeline.objectHz = needsPerception && settings.settings.showAnimals ? budget.objectHz : 0
     }
 
     /// Switches cameras; tracks from the old one mean nothing to the new one.

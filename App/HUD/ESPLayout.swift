@@ -10,8 +10,6 @@ struct PlayerLayout: Identifiable {
     let id: Int
     let track: Track
     let label: String
-    /// What the person is doing (nil for animals, or before the first activity pass).
-    var activity: ActivityState?
     var color: Color
     /// Meters along the floor from the phone, from the predicted position when available: smooth, and the
     /// same measure the edge arrows use.
@@ -75,14 +73,16 @@ enum ESPLayout {
                let p0 = now.point(world: world, camera: then), let p1 = now.point(world: predicted) {
                 thenAnchor = p0
                 nowAnchor = p1
-                let d0 = now.depth(of: world, camera: then), d1 = now.depth(of: predicted)
-                scale = CGFloat(min(max(d0 / max(d1, 0.1), 0.5), 2))
+                // Grow/shrink with the change in depth only when depth was measured: a guessed distance jitters,
+                // and scaling by it made boxes swell past the person.
+                if !track.distanceIsEstimated {
+                    let d0 = now.depth(of: world, camera: then), d1 = now.depth(of: predicted)
+                    scale = CGFloat(min(max(d0 / max(d1, 0.1), 0.5), 2))
+                }
                 base = predicted
             }
-            var layout = PlayerLayout(track: track, label: store.label(for: track), color: Palette.color(for: track),
-                                      mapper: now, thenAnchor: thenAnchor, nowAnchor: nowAnchor, scale: scale, base: base)
-            layout.activity = store.activities[track.id]
-            return layout
+            return PlayerLayout(track: track, label: store.label(for: track), color: Palette.color(for: track),
+                                mapper: now, thenAnchor: thenAnchor, nowAnchor: nowAnchor, scale: scale, base: base)
         }
 
         var offscreen: [OffscreenMarker] = []

@@ -1,7 +1,8 @@
 import ESPCore
 import SwiftUI
 
-/// Thin-line ESP drawing: boxes and the "lite" snaplines.
+/// Thin-line ESP drawing: boxes and the "lite" snaplines, with depth: near people get thick, bright lines and
+/// a soft glow, far ones thin, faded lines; far ones are drawn first so near ones sit on top.
 struct ESPCanvas: View {
     struct Options {
         var box = true
@@ -14,37 +15,42 @@ struct ESPCanvas: View {
 
     var body: some View {
         Canvas { context, size in
-            for layout in layouts {
+            for layout in layouts.sorted(by: { $0.distance > $1.distance }) {
+                let width = CGFloat(DepthStyle.lineWidth(layout.distance))
+                let opacity = Double(DepthStyle.opacity(layout.distance))
+                let nearness = Double(DepthStyle.nearness(layout.distance))
                 if options.snaplines {
-                    drawSnapline(to: layout, from: CGPoint(x: size.width / 2, y: size.height), in: &context)
+                    drawSnapline(to: layout, from: CGPoint(x: size.width / 2, y: 0), opacity: opacity, in: &context)
                 }
                 if options.box {
                     let path = boxPath(layout)
                     if options.boxStyle == .glass {
                         // Frosted look: faint tint plus a sheen fading down from the top edge.
                         let r = layout.rect
-                        context.fill(path, with: .color(layout.color.opacity(0.08)))
-                        context.fill(path, with: .linearGradient(Gradient(colors: [.white.opacity(0.18), .clear]),
+                        context.fill(path, with: .color(layout.color.opacity(0.08 * opacity)))
+                        context.fill(path, with: .linearGradient(Gradient(colors: [.white.opacity(0.18 * opacity), .clear]),
                                                                  startPoint: CGPoint(x: r.midX, y: r.minY),
                                                                  endPoint: CGPoint(x: r.midX, y: r.minY + r.height * 0.35)))
                     }
                     // Partly hidden behind something: dashed.
-                    stroke(path, color: layout.color, dashed: layout.track.occlusion == .partial, in: &context)
+                    stroke(path, color: layout.color, width: width, opacity: opacity, glow: nearness,
+                           dashed: layout.track.occlusion == .partial, in: &context)
                 }
             }
         }
     }
 
-    /// A hairline that fades in from the bottom edge and ends in a small dot under the box.
-    private func drawSnapline(to layout: PlayerLayout, from origin: CGPoint, in context: inout GraphicsContext) {
-        let end = CGPoint(x: layout.rect.midX, y: layout.rect.maxY)
+    /// A hairline from the top edge that fades in toward the box and ends in a small dot on its top edge.
+    private func drawSnapline(to layout: PlayerLayout, from origin: CGPoint, opacity: Double, in context: inout GraphicsContext) {
+        let end = CGPoint(x: layout.rect.midX, y: layout.rect.minY)
         var line = Path()
         line.move(to: origin)
         line.addLine(to: end)
-        context.stroke(line, with: .linearGradient(Gradient(colors: [layout.color.opacity(0), layout.color.opacity(0.7)]),
+        context.stroke(line, with: .linearGradient(Gradient(colors: [layout.color.opacity(0), layout.color.opacity(0.7 * opacity)]),
                                                    startPoint: origin, endPoint: end),
                        style: StrokeStyle(lineWidth: 1, lineCap: .round))
-        context.fill(Path(ellipseIn: CGRect(x: end.x - 2, y: end.y - 2, width: 4, height: 4)), with: .color(layout.color.opacity(0.9)))
+        context.fill(Path(ellipseIn: CGRect(x: end.x - 2, y: end.y - 2, width: 4, height: 4)),
+                     with: .color(layout.color.opacity(0.9 * opacity)))
     }
 
     private func boxPath(_ layout: PlayerLayout) -> Path {
@@ -68,11 +74,15 @@ struct ESPCanvas: View {
         return path
     }
 
-    /// Dark halo under the colored line keeps it readable on bright scenes.
-    private func stroke(_ path: Path, color: Color, dashed: Bool = false, in context: inout GraphicsContext) {
+    /// Dark halo under the colored line keeps it readable on bright scenes; near people also get a colored glow.
+    private func stroke(_ path: Path, color: Color, width: CGFloat, opacity: Double, glow: Double, dashed: Bool,
+                        in context: inout GraphicsContext) {
         let dash: [CGFloat] = dashed ? [6, 5] : []
-        context.stroke(path, with: .color(.black.opacity(0.35)),
-                       style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round, dash: dash))
-        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round, dash: dash))
+        func style(_ w: CGFloat) -> StrokeStyle { StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round, dash: dash) }
+        if glow > 0.05 {
+            context.stroke(path, with: .color(color.opacity(0.25 * glow)), style: style(width + 6 * glow))
+        }
+        context.stroke(path, with: .color(.black.opacity(0.35 * opacity)), style: style(width + 2))
+        context.stroke(path, with: .color(color.opacity(opacity)), style: style(width))
     }
 }

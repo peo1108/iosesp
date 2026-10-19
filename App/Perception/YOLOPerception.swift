@@ -2,9 +2,9 @@ import CoreML
 import ESPCore
 import Vision
 
-/// People (YOLO11n-pose) and animals/objects (YOLO11n) via CoreML on the Neural Engine.
+/// People (YOLO11n-pose) and animals (YOLO11n) via CoreML on the Neural Engine.
 /// Not thread-safe: call from one queue. `init` fails when the pose model is missing, fails to load or has an
-/// unexpected output; the object model is optional (no animals/objects without it).
+/// unexpected output; the object model is optional (no animals without it).
 final class YOLOPerception {
     private let poseRequest: VNCoreMLRequest
     private let objectRequest: VNCoreMLRequest?
@@ -46,44 +46,41 @@ final class YOLOPerception {
     }
 
     /// People with skeletons, in captured-image coordinates. Weak boxes (down to 0.15) are kept: the tracker
-    /// only lets them extend existing tracks.
+    /// only lets them extend existing tracks. Each box is trimmed to the keypoints that can be seen, so a person
+    /// behind a desk doesn't get a box over the desk.
     func people(in buffer: CVPixelBuffer, orientation: VisionOrientation) -> [RawDetection] {
         let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation == .down ? .down : .up, options: [:])
         guard (try? handler.perform([poseRequest])) != nil,
               let array = (poseRequest.results?.first as? VNCoreMLFeatureValueObservation)?.featureValue.multiArrayValue
         else { return [] }
         let (values, shape) = Self.floats(array)
-        return YOLO.decodePose(values, shape: shape, inputSize: inputSize, boxThreshold: 0.15).map { c in
-            RawDetection(box: VisionMapping.topLeftRect(c.box, orientation: orientation), kind: .person,
+        return YOLO.decodePose(values, shape: shape, inputSize: inputSize, boxThreshold: 0.15, keypointThreshold: 0.35).map { c in
+            RawDetection(box: VisionMapping.topLeftRect(PersonBox.visible(c.box, joints: c.joints), orientation: orientation),
+                         kind: .person,
                          confidence: c.confidence,
                          joints: c.joints.mapValues { VisionMapping.topLeftPoint($0, orientation: orientation) })
         }
     }
 
-    /// Animals (tracked like people) and objects (used for activities), in captured-image coordinates.
-    func things(in buffer: CVPixelBuffer, orientation: VisionOrientation) -> (animals: [RawDetection], objects: [DetectedObject]) {
-        guard let objectRequest else { return ([], []) }
+    /// Animals (tracked like people), in captured-image coordinates.
+    func animals(in buffer: CVPixelBuffer, orientation: VisionOrientation) -> [RawDetection] {
+        guard let objectRequest else { return [] }
         let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation == .down ? .down : .up, options: [:])
         guard (try? handler.perform([objectRequest])) != nil,
               let observations = objectRequest.results as? [VNRecognizedObjectObservation]
-        else { return ([], []) }
+        else { return [] }
 
-        var animals: [RawDetection] = [], objects: [DetectedObject] = []
+        var animals: [RawDetection] = []
         for observation in observations {
             guard let top = observation.labels.first else { continue }
             let b = observation.boundingBox
             let box = VisionMapping.rect(Rect(x: Float(b.minX), y: Float(b.minY), width: Float(b.width), height: Float(b.height)),
                                          orientation: orientation)
-            switch COCOClass(label: top.identifier) {
-            case let .animal(kind):
+            if case let .animal(kind) = COCOClass(label: top.identifier) {
                 animals.append(RawDetection(box: box, kind: .animal(kind), confidence: top.confidence))
-            case let .object(kind) where top.confidence >= 0.3:
-                objects.append(DetectedObject(kind: kind, box: box, confidence: top.confidence))
-            default:
-                break
             }
         }
-        return (animals, objects)
+        return animals
     }
 
     /// Copies a 3-D multi-array (Float16/Float32/Double, any strides) into a C-ordered Float array.

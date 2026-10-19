@@ -1,3 +1,4 @@
+import ESPCore
 import SwiftUI
 
 /// Glass arrows on the screen edge pointing at people and animals out of view.
@@ -20,6 +21,8 @@ struct OffscreenArrowsView: View {
                             .monospacedDigit()
                             .shadow(color: .black.opacity(0.5), radius: 2)
                     }
+                    .scaleEffect(CGFloat(DepthStyle.cardScale(marker.distance)))
+                    .opacity(Double(DepthStyle.opacity(marker.distance)))
                     .position(marker.point)
                 }
             }

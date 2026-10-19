@@ -1,7 +1,7 @@
 import ESPCore
 import SwiftUI
 
-/// "TRONG KHUNG": everyone in view, nearest first, with what they are doing.
+/// "TRONG KHUNG": everyone in view, nearest first.
 struct PlayerListView: View {
     struct Row: Identifiable {
         let id: Int

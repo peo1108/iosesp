@@ -47,6 +47,9 @@ public struct Track: Identifiable, Sendable {
 
     public var speed: Float { length(velocity) }
 
+    /// Speed along the floor (vertical jitter of the feet point left out), m/s.
+    public var floorSpeed: Float { Vec2(velocity.x, velocity.z).squareLength.squareRoot() }
+
     /// Where the feet probably are at `time`: the last position carried forward by the velocity, at most 0.3 s.
     public func predictedWorld(at time: TimeInterval) -> Vec3? {
         guard let worldPosition else { return nil }
