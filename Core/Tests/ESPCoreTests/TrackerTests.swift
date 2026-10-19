@@ -7,6 +7,17 @@ private func det(_ x: Float, _ y: Float = 0.3, world: Vec3? = nil, distance: Flo
               distance: distance, distanceIsEstimated: false, heightMeters: 1.7, yaw: 0, occlusion: .visible)
 }
 
+@Test func animalTracksSurviveFramesWithoutObjectPass() {
+    // Animals come from the slower object model: frames without that pass must not age or drop them.
+    let t = Tracker()
+    var r: [Track] = []
+    for i in 0..<9 {
+        let objectPass = i.isMultiple(of: 3)
+        r = t.update(objectPass ? [det(0.6, kind: .animal(.cat))] : [], at: Double(i) / 30, animalsObserved: objectPass)
+    }
+    #expect(r.contains { $0.kind == .animal(.cat) && $0.state == .confirmed })
+}
+
 @Test func differentKindsNeverMatch() {
     let t = Tracker()
     for i in 0..<3 { t.update([det(0.2)], at: Double(i) / 30) }

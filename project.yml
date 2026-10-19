@@ -13,6 +13,13 @@ targets:
     platform: iOS
     sources:
       - path: App
+        excludes:
+          - "Models/**"
+      # Compiled CoreML models produced by tools/export-models.py in CI, copied as a folder.
+      - path: App/Models
+        type: folder
+        buildPhase: resources
+        optional: true
     dependencies:
       - package: ESPCore
     settings:

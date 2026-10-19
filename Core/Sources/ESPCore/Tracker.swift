@@ -36,8 +36,10 @@ public final class Tracker {
     }
 
     /// Returns confirmed tracks (nearest first) followed by lost ones, at most `maxTracks`.
+    /// `animalsObserved` is false on frames where the (slower) animal detector did not run: animal tracks are
+    /// then left untouched instead of being aged or dropped.
     @discardableResult
-    public func update(_ detections: [Detection], at time: TimeInterval) -> [Track] {
+    public func update(_ detections: [Detection], at time: TimeInterval, animalsObserved: Bool = true) -> [Track] {
         var freeTracks = Set(entries.indices)
         var freeDetections = Set(detections.indices)
 
@@ -73,9 +75,9 @@ public final class Tracker {
             freeDetections.remove(pair.d)
         }
 
-        // 3. Age out unmatched tracks.
+        // 3. Age out unmatched tracks (only kinds this frame actually looked for).
         var removed = Set<Int>()
-        for t in freeTracks {
+        for t in freeTracks where animalsObserved || entries[t].track.kind.isPerson {
             let unseen = time - entries[t].track.lastSeen
             switch entries[t].track.state {
             case .tentative:

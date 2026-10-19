@@ -16,6 +16,10 @@ final class ESPStore {
     var hasDepth = false
     /// Person-segmentation mask in captured-image space (white, alpha = person), refreshed ~10 Hz.
     var chamsMask: CGImage?
+    /// Latest animal/object-model objects (phones, cups, chairs…), captured-image coordinates.
+    var objects: [DetectedObject] = []
+    /// The YOLO models failed to load; people come from the weaker Vision fallback.
+    var modelWarning = false
 
     @ObservationIgnored private var labels = LabelBook()
     @ObservationIgnored private var lastPublish: Date?
@@ -35,6 +39,7 @@ final class ESPStore {
 
     func clear() {
         tracks = []
+        objects = []
         chamsMask = nil
         cameras = TimedHistory(keep: 1.2)
     }

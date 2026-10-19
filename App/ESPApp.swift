@@ -18,7 +18,13 @@ final class AppModel {
     }
 
     var budget: PerceptionBudget {
-        ThermalPolicy.budget(thermal.level, isRecording: recorder.isRecording)
+        ThermalPolicy.budget(thermal.level, isRecording: recorder.isRecording, smoothMode: settings.settings.smoothMode)
+    }
+
+    /// Animals, objects or activities need the animal/object model.
+    private var needsObjects: Bool {
+        let s = settings.settings
+        return s.showAnimals || s.showObjects || s.activity || s.detailCard || s.eventLog || s.playerList
     }
 
     /// Anything on screen that needs fresh perception results.
@@ -33,7 +39,8 @@ final class AppModel {
     func applyBudget() {
         let budget = budget
         // Idle at 10 Hz when nothing is shown, so a reveal is instant without heating the phone.
-        pipeline.targetHz = needsPerception ? budget.hz : min(budget.hz, 10)
+        pipeline.poseHz = needsPerception ? budget.poseHz : min(budget.poseHz, 10)
+        pipeline.objectHz = needsPerception && needsObjects ? budget.objectHz : 0
         pipeline.wantMask = settings.settings.chams && budget.chamsAllowed
     }
 }

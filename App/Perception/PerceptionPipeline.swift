@@ -30,12 +30,13 @@ final class PerceptionPipeline {
 
     /// People in captured-image coordinates (top-left origin) whatever `orientation` Vision ran in.
     /// `mask` is a person-segmentation buffer in Vision's orientation, produced at most every 0.1 s and only
-    /// when `wantMask` is set; nil otherwise.
-    func detect(in pixelBuffer: CVPixelBuffer, orientation: VisionOrientation,
+    /// when `wantMask` is set; nil otherwise. With `wantPeople` false (YOLO handles people) only the mask runs.
+    func detect(in pixelBuffer: CVPixelBuffer, orientation: VisionOrientation, wantPeople: Bool = true,
                 wantMask: Bool) -> (people: [RawDetection], mask: CVPixelBuffer?) {
         let now = CACurrentMediaTime()
         let maskDue = wantMask && now - lastMask >= 0.1
-        var requests: [VNRequest] = [rectangles, pose]
+        guard wantPeople || maskDue else { return ([], nil) }
+        var requests: [VNRequest] = wantPeople ? [rectangles, pose] : []
         if maskDue {
             requests.append(segmentation)
             lastMask = now
@@ -48,6 +49,9 @@ final class PerceptionPipeline {
         } catch {
             return ([], nil)
         }
+
+        let mask = maskDue ? segmentation.results?.first?.pixelBuffer : nil
+        guard wantPeople else { return ([], mask) }
 
         var people = (rectangles.results ?? []).map { observation in
             let r = observation.boundingBox
@@ -73,7 +77,6 @@ final class PerceptionPipeline {
             }
         }
 
-        let mask = maskDue ? segmentation.results?.first?.pixelBuffer : nil
         return (people, mask)
     }
 

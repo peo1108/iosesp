@@ -4,6 +4,7 @@ import SwiftUI
 /// The hidden mod menu: a Liquid Glass panel from the trailing edge, laid out like the Settings app.
 struct MenuPanel: View {
     @Bindable var store: SettingsStore
+    var modelWarning = false
     var onClose: () -> Void
 
     private var accent: Color { Palette.accent(store.settings.accent) }
@@ -153,6 +154,12 @@ struct MenuPanel: View {
         VStack(alignment: .leading, spacing: 6) {
             sectionTitle("Về app")
             Text("v2.6 · Undetected ✓").font(.subheadline.weight(.semibold))
+            if modelWarning {
+                Label("Không tải được model YOLO — đang dùng nhận diện dự phòng, kém hơn và không có con vật/đồ vật.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Palette.partial)
+            }
             Text("Chạm 2 lần bằng 3 ngón để mở/đóng menu. Giữ 3 ngón để quay video. Nếu bật Trợ năng → Thu phóng, iOS sẽ chiếm cử chỉ chạm 3 ngón.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

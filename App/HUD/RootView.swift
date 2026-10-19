@@ -35,7 +35,7 @@ struct RootView: View {
             if menuOpen {
                 HStack {
                     Spacer()
-                    MenuPanel(store: model.settings, onClose: toggleMenu)
+                    MenuPanel(store: model.settings, modelWarning: store.modelWarning, onClose: toggleMenu)
                         .containerRelativeFrame(.horizontal) { width, _ in width * 0.4 }
                 }
                 .padding(.vertical, 8)

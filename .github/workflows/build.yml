@@ -25,6 +25,25 @@ jobs:
         working-directory: Core
         run: swift test
 
+      - name: Cache YOLO models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: App/Models
+          key: yolo-coreml-v1-${{ hashFiles('tools/export-models.py') }}
+
+      - uses: actions/setup-python@v5
+        if: steps.models.outputs.cache-hit != 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Export YOLO models to CoreML
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          pip install --quiet "ultralytics>=8.3,<8.4" "coremltools>=8.0"
+          python tools/export-models.py
+          ls -la App/Models
+
       - name: Generate project
         run: xcodegen generate
 
