@@ -3,41 +3,37 @@ import ESPCore
 import UIKit
 
 /// Converts captured-image and world coordinates into view points for one display frame.
+///
+/// Everything goes through ESPCore's `ViewMapping` (aspect fill, 180° in landscapeLeft) and plain pinhole
+/// projection with the camera intrinsics — not ARKit's `displayTransform`/`projectPoint`, which rotate the
+/// result 90° whenever the orientation passed in isn't a landscape one.
 struct ScreenMapper {
     let viewSize: CGSize
     let orientation: UIInterfaceOrientation
     let camera: ARCamera
     let cameraToWorld: Mat4
-    private let imageToView: CGAffineTransform
+    private let intrinsics: CameraIntrinsics
+    private let mapping: ViewMapping
 
     init(frame: ARFrame, viewSize: CGSize, orientation: UIInterfaceOrientation) {
         self.viewSize = viewSize
         self.orientation = orientation
         camera = frame.camera
         cameraToWorld = Mat4(frame.camera.transform)
-        imageToView = frame.displayTransform(for: orientation, viewportSize: viewSize)
+        intrinsics = CameraIntrinsics(frame.camera)
+        mapping = ViewMapping(imageSize: intrinsics.imageSize,
+                              viewSize: Vec2(Float(viewSize.width), Float(viewSize.height)),
+                              upsideDown: orientation == .landscapeLeft)
     }
 
-    /// Maps the unit square of the captured image onto the view (may include a 180° turn in landscapeLeft).
+    /// Maps the unit square of the captured image onto the view (a 180° turn in landscapeLeft).
     var normalizedImageToView: CGAffineTransform {
-        imageToView.concatenating(CGAffineTransform(scaleX: viewSize.width, y: viewSize.height))
-    }
-
-    /// Plain pinhole projection that keeps going for points behind the camera (they come out mirrored),
-    /// which is what edge arrows need. Never nil.
-    func naivePoint(world: Vec3) -> CGPoint {
-        let k = CameraIntrinsics(camera)
-        let c = SpatialMath.cameraSpace(world: world, cameraToWorld: cameraToWorld)
-        var depth = -c.z
-        if abs(depth) < 0.01 { depth = depth < 0 ? -0.01 : 0.01 }
-        let u = (k.fx * c.x / depth + k.cx) / k.imageSize.x
-        let v = (-k.fy * c.y / depth + k.cy) / k.imageSize.y
-        return point(normalized: Vec2(u, v))
+        let t = mapping.affine
+        return CGAffineTransform(a: CGFloat(t.a), b: 0, c: 0, d: CGFloat(t.d), tx: CGFloat(t.tx), ty: CGFloat(t.ty))
     }
 
     func point(normalized p: Vec2) -> CGPoint {
-        let n = CGPoint(x: CGFloat(p.x), y: CGFloat(p.y)).applying(imageToView)
-        return CGPoint(x: n.x * viewSize.width, y: n.y * viewSize.height)
+        cg(mapping.view(fromNormalized: p))
     }
 
     func rect(_ r: Rect) -> CGRect {
@@ -52,13 +48,19 @@ struct ScreenMapper {
     }
 
     func point(world: Vec3) -> CGPoint? {
-        guard depth(of: world) > 0.01 else { return nil }
-        return unclampedPoint(world: world)
+        SpatialMath.project(world: world, intrinsics: intrinsics, cameraToWorld: cameraToWorld).map { cg(mapping.view(fromPixel: $0)) }
     }
 
-    /// Projection even for points behind the camera (used to aim off-screen arrows).
-    func unclampedPoint(world: Vec3) -> CGPoint {
-        camera.projectPoint(world, orientation: orientation, viewportSize: viewSize)
+    /// Plain pinhole projection that keeps going for points behind the camera (they come out mirrored),
+    /// which is what edge arrows need. Never nil.
+    func naivePoint(world: Vec3) -> CGPoint {
+        let k = intrinsics
+        let c = SpatialMath.cameraSpace(world: world, cameraToWorld: cameraToWorld)
+        var depth = -c.z
+        if abs(depth) < 0.01 { depth = depth < 0 ? -0.01 : 0.01 }
+        let u = (k.fx * c.x / depth + k.cx) / k.imageSize.x
+        let v = (-k.fy * c.y / depth + k.cy) / k.imageSize.y
+        return point(normalized: Vec2(u, v))
     }
 
     /// The same projections through another camera (the one a detection was made with), on this view.
@@ -67,8 +69,12 @@ struct ScreenMapper {
     }
 
     func point(world: Vec3, camera other: ARCamera) -> CGPoint? {
-        guard depth(of: world, camera: other) > 0.01 else { return nil }
-        return other.projectPoint(world, orientation: orientation, viewportSize: viewSize)
+        SpatialMath.project(world: world, intrinsics: CameraIntrinsics(other), cameraToWorld: Mat4(other.transform))
+            .map { cg(mapping.view(fromPixel: $0)) }
+    }
+
+    private func cg(_ v: Vec2) -> CGPoint {
+        CGPoint(x: CGFloat(v.x), y: CGFloat(v.y))
     }
 }
 
@@ -77,8 +83,14 @@ enum InterfaceOrientation {
         UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
     }
 
+    /// Always a landscape orientation (the app is landscape-only): anything else the system reports
+    /// (portrait, unknown) counts as landscapeRight.
     @MainActor static var current: UIInterfaceOrientation {
-        scene?.effectiveGeometry.interfaceOrientation ?? .landscapeRight
+        landscape(scene?.effectiveGeometry.interfaceOrientation)
+    }
+
+    static func landscape(_ o: UIInterfaceOrientation?) -> UIInterfaceOrientation {
+        o == .landscapeLeft ? .landscapeLeft : .landscapeRight
     }
 
     @MainActor static var safeAreaInsets: UIEdgeInsets {

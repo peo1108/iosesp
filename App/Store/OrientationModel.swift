@@ -18,11 +18,11 @@ final class OrientationModel {
     /// Starts following the window scene. Safe to call repeatedly.
     func attach() {
         guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
-        interfaceOrientation = scene.effectiveGeometry.interfaceOrientation
+        interfaceOrientation = InterfaceOrientation.landscape(scene.effectiveGeometry.interfaceOrientation)
         guard observation == nil else { return }
         observation = scene.observe(\.effectiveGeometry, options: [.new]) { [weak self] scene, _ in
             MainActor.assumeIsolated {
-                self?.interfaceOrientation = scene.effectiveGeometry.interfaceOrientation
+                self?.interfaceOrientation = InterfaceOrientation.landscape(scene.effectiveGeometry.interfaceOrientation)
             }
         }
     }
