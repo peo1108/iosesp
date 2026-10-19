@@ -27,9 +27,13 @@ from PIL import Image, ImageDraw, ImageFont
 
 GREEN = (88, 199, 52)       # BGR of iOS systemGreen
 ORANGE = (10, 159, 255)     # BGR of iOS systemOrange
+BLUE = (255, 160, 10)       # BGR of iOS systemBlue-ish, for vehicles
 ANIMALS = {14: "Chim", 15: "Mèo", 16: "Chó", 17: "Ngựa", 18: "Cừu", 19: "Bò", 20: "Voi", 21: "Gấu", 22: "Ngựa vằn",
            23: "Hươu cao cổ"}
 ANIMAL_HEIGHT = {14: 0.25, 15: 0.3, 16: 0.55, 17: 1.7, 18: 0.9, 19: 1.5, 20: 3.0, 21: 1.2, 22: 1.4, 23: 4.5}
+# Ultralytics COCO index → name / typical box height in meters (for guessing distance).
+VEHICLES = {1: "Xe đạp", 2: "Ô tô", 3: "Xe máy", 5: "Xe buýt", 7: "Xe tải"}
+VEHICLE_HEIGHT = {1: 1.05, 2: 1.5, 3: 1.15, 5: 3.1, 7: 3.0}
 PERSON_HEIGHT, TORSO = 1.7, 0.5
 NEAR, FAR = 1.5, 18.0
 RIDING_SPEED = 6.5          # m/s, ~23 km/h: on a vehicle, not on foot

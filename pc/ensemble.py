@@ -104,6 +104,8 @@ def load_detr(resolution: int):
 # RF-DETR returns COCO category ids: person 1, animals 16 (bird) … 25 (giraffe). Ultralytics' index is id − 2.
 DETR_PERSON = 1
 DETR_ANIMALS = {coco_id: coco_id - 2 for coco_id in range(16, 26)}
+# Bicycle 2, car 3, motorcycle 4, bus 6, truck 8 (below the first gap in COCO ids, so index = id − 1).
+DETR_VEHICLES = {2: 1, 3: 2, 4: 3, 6: 5, 8: 7}
 
 
 def detr_detect(model, rgb: np.ndarray, threshold: float):

@@ -1,6 +1,6 @@
 """Video in, ESP video out, as accurate as the GPU can make it (offline, no real-time limit).
 
-    python esp_video.py input.mp4 [-o output.mp4] [--animals] [--fast]
+    python esp_video.py input.mp4 [-o output.mp4] [--no-animals] [--no-vehicles] [--fast]
 
 Pass 1 detects and tracks every frame with two models: RF-DETR Large at 1280 px (run on the frame and its mirror)
 and YOLO11x-pose at 1280 px with test-time augmentation, their person boxes fused (one model's misses filled by
@@ -23,8 +23,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from ensemble import DETR_ANIMALS, DETR_PERSON, Detections, detr_detect, fuse, load_detr, make_tracker
-from esp_live import (ANIMAL_HEIGHT, ANIMALS, EVENT_TTL, EVENTS_SHOWN, GREEN, ORANGE, PERSON_HEIGHT, RIDING_SPEED,
+from ensemble import DETR_ANIMALS, DETR_PERSON, DETR_VEHICLES, Detections, detr_detect, fuse, load_detr, make_tracker
+from esp_live import (ANIMAL_HEIGHT, ANIMALS, BLUE, VEHICLE_HEIGHT, VEHICLES, EVENT_TTL, EVENTS_SHOWN, GREEN, ORANGE, PERSON_HEIGHT, RIDING_SPEED,
                       Painter, card, clock, corners, estimate_distance, kmh, meters, snapline, torso_px, visible_box)
 
 HERE = Path(__file__).resolve().parent
@@ -164,7 +164,8 @@ class Options:
     model: str = "yolo11x-pose.pt"
     imgsz: int = 1280
     no_tta: bool = False
-    animals: bool = False
+    animals: bool = True
+    vehicles: bool = True
     fast: bool = False
     detr_res: int = 1280
     fov: float = 70
@@ -216,7 +217,7 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
     focal = max(W, H) / 2 / math.tan(math.radians(o.fov) / 2)   # FOV of the long side (portrait too)
 
     cache = o.input.with_name(o.input.name + f".esp-{'fast' if o.fast else 'max'}-{o.imgsz}-{o.detr_res}"
-                                                     f"{'-animals' if o.animals else ''}.pkl")
+                                                     f"{'-animals' if o.animals else ''}{'-vehicles' if o.vehicles else ''}.pkl")
     cached = None
     if cache.exists() and not o.redetect:
         import pickle
@@ -236,7 +237,8 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
     if cached is not None:
         pass   # detections loaded from the cache: no models needed
     elif o.fast:
-        animal_model = YOLO("yolo11x.pt") if o.animals else None
+        thing_classes = (list(ANIMALS) if o.animals else []) + (list(VEHICLES) if o.vehicles else [])
+        animal_model = YOLO("yolo11x.pt") if thing_classes else None
         tracker = str(HERE / "botsort_esp.yaml")
     else:
         # Ensemble: RF-DETR Large (+ mirror) and YOLO11x-pose (+ TTA), fused, tracked by our own BoT-SORT.
@@ -244,6 +246,7 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
         say(f"Chế độ siêu chính xác: RF-DETR Large {detr_res}px + YOLO11x-pose {o.imgsz}px")
         people_tracker = make_tracker(HERE / "botsort_esp.yaml", fps)
         animal_tracker = make_tracker(HERE / "botsort_esp.yaml", fps) if o.animals else None
+        vehicle_tracker = make_tracker(HERE / "botsort_esp.yaml", fps) if o.vehicles else None
 
     started, idx = time.monotonic(), 0
     while cached is None:
@@ -264,11 +267,15 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
                     add(f"p{tid}", "Người", GREEN, PERSON_HEIGHT, idx, box, torso)
             if animal_model is not None:
                 ares = animal_model.track(frame, persist=True, tracker=tracker, imgsz=o.imgsz, augment=not o.no_tta,
-                                          quantize=quant, device=device, classes=list(ANIMALS), conf=0.25, verbose=False)[0]
+                                          quantize=quant, device=device, classes=thing_classes, conf=0.25, verbose=False)[0]
                 if ares.boxes is not None and ares.boxes.id is not None:
                     for box, tid, cls in zip(ares.boxes.xyxy.cpu().numpy(), ares.boxes.id.int().cpu().numpy(),
                                              ares.boxes.cls.int().cpu().numpy()):
-                        add(f"a{tid}", ANIMALS[int(cls)], ORANGE, ANIMAL_HEIGHT[int(cls)], idx, box)
+                        c = int(cls)
+                        if c in VEHICLES:
+                            add(f"v{tid}", VEHICLES[c], BLUE, VEHICLE_HEIGHT[c], idx, box)
+                        else:
+                            add(f"a{tid}", ANIMALS[c], ORANGE, ANIMAL_HEIGHT[c], idx, box)
         else:
             y = people_model.predict(frame, imgsz=o.imgsz, augment=tta_people, quantize=quant, device=device,
                                      classes=[0], conf=0.1, iou=0.6, verbose=False)[0]
@@ -294,6 +301,14 @@ def run(o: Options, say=print, report=None, preview=None, stop=lambda: False) ->
                     tid, i = int(row[4]), int(row[7])
                     c = int(adets.cls[i])
                     add(f"a{tid}", ANIMALS[c], ORANGE, ANIMAL_HEIGHT[c], idx, adets.xyxy[i])
+            if vehicle_tracker is not None:
+                vehicle = np.isin(dk, list(DETR_VEHICLES))
+                vclasses = np.array([DETR_VEHICLES[k] for k in dk[vehicle]], dtype=np.float32)
+                vdets = Detections(db[vehicle], dc[vehicle], vclasses)
+                for row in vehicle_tracker.update(vdets, frame):
+                    tid, i = int(row[4]), int(row[7])
+                    c = int(vdets.cls[i])
+                    add(f"v{tid}", VEHICLES[c], BLUE, VEHICLE_HEIGHT[c], idx, vdets.xyxy[i])
         idx += 1
         if idx % 10 == 0:
             tick("detect", idx, total or idx, started, frame)
@@ -414,7 +429,8 @@ def main():
     ap.add_argument("--model", default="yolo11x-pose.pt")
     ap.add_argument("--imgsz", type=int, default=1280, help="model input; 1536 for 4K footage with far-away people")
     ap.add_argument("--no-tta", action="store_true", help="skip test-time augmentation")
-    ap.add_argument("--animals", action="store_true", help="also track animals")
+    ap.add_argument("--no-animals", action="store_true", help="don't track animals")
+    ap.add_argument("--no-vehicles", action="store_true", help="don't track vehicles")
     ap.add_argument("--fast", action="store_true", help="YOLO11x-pose only (≈3× faster, misses more people)")
     ap.add_argument("--detr-res", type=int, default=1280, help="RF-DETR input size")
     ap.add_argument("--fov", type=float, default=70, help="field of view along the long side of the frame, degrees "
@@ -428,7 +444,7 @@ def main():
     ap.add_argument("--no-counter", action="store_true")
     ap.add_argument("--redetect", action="store_true", help="ignore the saved detections and run pass 1 again")
     a = ap.parse_args()
-    run(Options(input=a.input, output=a.output, model=a.model, imgsz=a.imgsz, no_tta=a.no_tta, animals=a.animals,
+    run(Options(input=a.input, output=a.output, model=a.model, imgsz=a.imgsz, no_tta=a.no_tta, animals=not a.no_animals, vehicles=not a.no_vehicles,
                 fast=a.fast, detr_res=a.detr_res, fov=a.fov, min_seconds=a.min_seconds, redetect=a.redetect,
                 cards=not a.no_cards, snaplines=not a.no_snaplines, counter=not a.no_counter, list=a.list, log=a.log,
                 watermark=a.watermark))
