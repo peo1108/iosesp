@@ -27,7 +27,7 @@ struct DetailCardsView: View {
     }
 }
 
-/// "Người 01" / "🐕 Chó 01", then distance, speed and time in frame.
+/// "Người" / "🐕 Chó", then distance, speed and time in frame.
 struct DetailCardView: View {
     let layout: PlayerLayout
     let now: TimeInterval

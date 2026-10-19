@@ -19,20 +19,19 @@ final class ESPStore {
 
     /// What each person is doing, by track id.
     var activities: [Int: ActivityState] = [:]
-    /// Recent "Người 01 ngồi xuống"-style events, oldest first.
+    /// Recent "Người ngồi xuống"-style events, oldest first.
     var events: [ActivityEvent] = []
     /// Timestamp of the latest results (camera clock), for "time in frame".
     var timestamp: TimeInterval = 0
 
-    @ObservationIgnored private var labels = LabelBook()
     @ObservationIgnored private let activityTracker = ActivityTracker()
     @ObservationIgnored private var lastPublish: Date?
 
     var confirmed: [Track] { tracks.filter { $0.state == .confirmed } }
 
-    /// "Người 01", "Chó 01"… stable per track.
+    /// Just what it is — "Người", "Chó"… — no per-track number.
     func label(for track: Track) -> String {
-        labels.label(for: track.id, kind: track.kind)
+        track.kind.name
     }
 
     /// The camera pose of the detection frame at `timestamp` (a track's `lastSeen`).

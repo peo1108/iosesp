@@ -1,7 +1,7 @@
 import ESPCore
 import SwiftUI
 
-/// Recent events ("Người 01 ngồi xuống"), newest at the bottom, each fading out over its lifetime.
+/// Recent events ("Người ngồi xuống"), newest at the bottom, each fading out over its lifetime.
 struct EventLogView: View {
     let events: [ActivityEvent]
     /// Camera clock now.
