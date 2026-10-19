@@ -1,0 +1,63 @@
+import ARKit
+import ESPCore
+import UIKit
+
+/// Converts captured-image and world coordinates into view points for one display frame.
+struct ScreenMapper {
+    let viewSize: CGSize
+    let orientation: UIInterfaceOrientation
+    let camera: ARCamera
+    let cameraToWorld: Mat4
+    private let imageToView: CGAffineTransform
+
+    init(frame: ARFrame, viewSize: CGSize, orientation: UIInterfaceOrientation) {
+        self.viewSize = viewSize
+        self.orientation = orientation
+        camera = frame.camera
+        cameraToWorld = Mat4(frame.camera.transform)
+        imageToView = frame.displayTransform(for: orientation, viewportSize: viewSize)
+    }
+
+    func point(normalized p: Vec2) -> CGPoint {
+        let n = CGPoint(x: CGFloat(p.x), y: CGFloat(p.y)).applying(imageToView)
+        return CGPoint(x: n.x * viewSize.width, y: n.y * viewSize.height)
+    }
+
+    func rect(_ r: Rect) -> CGRect {
+        let a = point(normalized: Vec2(r.x, r.y))
+        let b = point(normalized: Vec2(r.x + r.width, r.maxY))
+        return CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+    }
+
+    /// Distance in front of the camera (negative when behind).
+    func depth(of world: Vec3) -> Float {
+        -SpatialMath.cameraSpace(world: world, cameraToWorld: cameraToWorld).z
+    }
+
+    func point(world: Vec3) -> CGPoint? {
+        guard depth(of: world) > 0.01 else { return nil }
+        return unclampedPoint(world: world)
+    }
+
+    /// Projection even for points behind the camera (used to aim off-screen arrows).
+    func unclampedPoint(world: Vec3) -> CGPoint {
+        camera.projectPoint(world, orientation: orientation, viewportSize: viewSize)
+    }
+
+    /// The same projections through another camera (the one a detection was made with), on this view.
+    func depth(of world: Vec3, camera other: ARCamera) -> Float {
+        -SpatialMath.cameraSpace(world: world, cameraToWorld: Mat4(other.transform)).z
+    }
+
+    func point(world: Vec3, camera other: ARCamera) -> CGPoint? {
+        guard depth(of: world, camera: other) > 0.01 else { return nil }
+        return other.projectPoint(world, orientation: orientation, viewportSize: viewSize)
+    }
+}
+
+enum InterfaceOrientation {
+    @MainActor static var current: UIInterfaceOrientation {
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        return scene?.effectiveGeometry.interfaceOrientation ?? .landscapeRight
+    }
+}
